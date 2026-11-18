@@ -41,6 +41,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnifiedHostDemo", "samples\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NativeShellKit.Installer", "tools\NativeShellKit.Installer\NativeShellKit.Installer.csproj", "{5D302C4D-37F9-4B47-A974-ADA30F28D009}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NativeShellKit.Tests", "tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj", "{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -243,6 +247,18 @@ Global
 		{5D302C4D-37F9-4B47-A974-ADA30F28D009}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5D302C4D-37F9-4B47-A974-ADA30F28D009}.Release|x86.ActiveCfg = Release|x64
 		{5D302C4D-37F9-4B47-A974-ADA30F28D009}.Release|x86.Build.0 = Release|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Debug|x64.ActiveCfg = Debug|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Debug|x64.Build.0 = Debug|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Debug|x86.ActiveCfg = Debug|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Debug|x86.Build.0 = Debug|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Release|x64.ActiveCfg = Release|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Release|x64.Build.0 = Release|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Release|x86.ActiveCfg = Release|x64
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -264,5 +280,6 @@ Global
 		{EC90E5B5-4AFC-4B55-9FAF-DCAB12BCB5CC} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 		{799D7081-B131-4B40-B1D7-D3A6224F952F} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 		{5D302C4D-37F9-4B47-A974-ADA30F28D009} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{DCECC493-3C9C-43B7-8346-2E74DE5A71E0} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

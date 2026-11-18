@@ -33,19 +33,22 @@ $projects = @(
 )
 $templateProject = "templates\NativeShellKit.Templates\NativeShellKit.Templates.csproj"
 
-Write-Host "[1/3] Restoring and building solution ($Configuration|$Platform)..."
-$restoreArgs = @("restore", (Join-Path $repoRoot "NativeShellKit.sln"))
-if (-not [string]::IsNullOrWhiteSpace($AdditionalNuGetSource)) {
-    $restoreArgs += "-p:RestoreAdditionalProjectSources=$AdditionalNuGetSource"
+Write-Host "[1/3] Restoring and building SDK libraries, DevTools, and Templates ($Configuration|$Platform)..."
+foreach ($relProj in $projects) {
+    $projPath = Join-Path $repoRoot $relProj
+    if ([string]::IsNullOrWhiteSpace($AdditionalNuGetSource)) {
+        & dotnet restore $projPath
+    } else {
+        & dotnet restore $projPath "-p:RestoreAdditionalProjectSources=$AdditionalNuGetSource"
+    }
+    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for $relProj ($LASTEXITCODE)." }
+
+    & dotnet build $projPath -c $Configuration -p:Platform=$Platform -p:Version=$Version --no-restore
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed for $relProj ($LASTEXITCODE)." }
 }
-& dotnet @restoreArgs
-if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed ($LASTEXITCODE)." }
 
 & dotnet restore (Join-Path $repoRoot $templateProject)
 if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for $templateProject ($LASTEXITCODE)." }
-
-& dotnet build (Join-Path $repoRoot "NativeShellKit.sln") -c $Configuration -p:Platform=$Platform -p:Version=$Version --no-restore
-if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)." }
 
 Write-Host "[2/3] Packing NativeShellKit NuGet libraries and templates ($Version)..."
 foreach ($relProj in $projects) {
