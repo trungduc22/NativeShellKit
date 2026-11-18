@@ -26,6 +26,7 @@ jobs:
             10.0.x
 
       - name: Pack NuGet packages and templates
+        id: pack
         shell: powershell
         run: |
           .\packaging\Pack-NuGet.ps1 -Configuration Release -Platform x64
@@ -35,19 +36,12 @@ jobs:
           dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="${{ github.workspace }}\artifacts\packages"
 
       - name: Build complete solution (Release|x64)
+        id: build
         run: |
           dotnet build NativeShellKit.sln -c Release -p:Platform=x64 --no-restore
 
-      - name: Build Developer Kit and run installer lifecycle check
-        shell: powershell
-        run: |
-          .\packaging\Build-DeveloperKit.ps1 -Configuration Release -Platform x64
-
-      - name: Run automated test suite
-        run: |
-          dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"
-
       - name: Run sample self-tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: cmd
         run: |
           samples\MinimalNativeApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\MinimalNativeApp.exe --self-test || exit /b 1
@@ -55,6 +49,7 @@ jobs:
           samples\UnifiedHostDemo\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\UnifiedHostDemo.exe --self-test || exit /b 1
 
       - name: Verify dotnet new nativeshellkit template
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: powershell
         run: |
           dotnet new install artifacts\packages\NativeShellKit.Templates.0.1.0-alpha.1.nupkg
@@ -64,3 +59,19 @@ jobs:
           dotnet build "$tplTest\MyNextApp.csproj" -c Release -p:Platform=x64 --no-restore
           cmd /c "`"$tplTest\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\MyNextApp.exe`" --self-test"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Developer Kit and compile Inno Setup installer
+        id: devkit
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: powershell
+        run: |
+          .\packaging\Build-DeveloperKit.ps1 -Configuration Release -Platform x64
+          $innoExe = "artifacts\developer-kit\inno\NativeShellKit-DeveloperKit-InnoSetup-x64.exe"
+          if (Test-Path $innoExe) {
+            Write-Host "Verified compiled Inno Setup GUI installer: $innoExe"
+          }
+
+      - name: Run automated test suite
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"

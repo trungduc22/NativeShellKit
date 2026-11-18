@@ -5,7 +5,7 @@
 - **Windows App SDK Baseline:** `2.6.4`
 - **Current Branch:** `main`
 - **Remote Repository:** `https://github.com/trungduc22/NativeShellKit`
-- **Latest Verified Commit:** `b1536562083ec55fb5bfcb7ca55f90f53a4116df` (M9 pushed; M10 test suite, migration docs, versioning policy & CI verified and staged for final push)
+- **Latest Verified Commit:** `de9a24dae19dd1b485a6dfb11f7ec56dca75b112` (M10 pushed; M11 hardening, GUI installer, interactive WinUI verification, compatibility matrix, and CI fixes staged for push)
 
 ## Available Toolchains
 
@@ -27,7 +27,8 @@
 - [x] **M7**: Package NativeShellKit NuGet libraries (`NativeShellKit.Build`, `packaging/Pack-NuGet.ps1`, 11 `.nupkg`s `0.1.0-alpha.1` with `.xbf`/`.pri` + `SHA256SUMS.txt` + `feed-manifest.json`)
 - [x] **M8**: Add app templates and developer tooling (`NativeShellKit.Templates`, `NativeShellKit.DevTools` / `nsk` CLI, `buildTransitive` `.xbf` consumer deployment)
 - [x] **M9**: Build Developer Kit installer and samples (`MinimalNativeApp`, `BackgroundCompanionApp`, `UnifiedHostDemo`, `NativeShellKit-DeveloperKit-Setup-x64.exe`, `DeveloperKit.iss`, `Build-DeveloperKit.ps1`)
-- [x] **M10**: Verify complete SDK and document migrations (`tests/NativeShellKit.Tests`, `VERSIONING_AND_UPGRADE_POLICY.md`, 4 app migration/compatibility docs, `.github/workflows/ci.yml`)
+- [x] **M10**: Verify complete SDK and document migrations (`de9a24dae19dd1b485a6dfb11f7ec56dca75b112`)
+- [x] **M11**: Production readiness and architectural hardening (DI `Scoped` + MEDI interop, notification registration/submission status + supervised activation, WinForms GUI installer wizard + `DeveloperKit.iss` components, Light/Dark Mica & responsive UI acceptance, `PRE_MIGRATION_COMPATIBILITY_MATRIX.md`, `Build-DeveloperKit.ps1` `ISCC.exe` resolution fix, 24 xUnit tests)
 
 ## Build & Test Commands
 
@@ -35,13 +36,22 @@
 - Restore: `dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="artifacts\packages%3B<offline-nuget-source>"`
 - Build: `dotnet build NativeShellKit.sln -c Release -p:Platform=x64 --no-restore`
 - Test: `dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"`
-- Developer Kit: `.\packaging\Build-DeveloperKit.ps1 -Configuration Release -Platform x64`
+- Developer Kit & Inno Setup: `.\packaging\Build-DeveloperKit.ps1 -Configuration Release -Platform x64`
+- Interactive WinUI acceptance: `<Sample>.exe --interactive-test artifacts\screenshots\samples`
+- Graphical Installer self-test: `NativeShellKit-DeveloperKit-Setup-x64.exe --gui-self-test artifacts\screenshots\installer`
 
-## Known Limitations
+## Verification & Environment Constraints
 
-- `ISCC.exe` (Inno Setup compiler) is absent on this workstation; `DeveloperKit.iss` is shipped alongside `NativeShellKit-DeveloperKit-Setup-x64.exe` and `Build-DeveloperKit.ps1`, which invokes `ISCC.exe` automatically when installed.
-- Native WinUI toast delivery (`AppNotificationManager`) and full interactive GUI window composition are verified in headless mode / `--self-test` + `FakeTrayInterop` + `RecordingNativePresenter`; live interactive Windows desktop toast rendering requires an interactive packaged/registered user desktop session.
+- **VERIFIED (Local Workstation):**
+  - 24/24 automated xUnit tests pass (`HostingAndIdentityTests`, `SettingsAndSecurityTests`, `UiServicesAndDesignSystemTests`, `NotificationAndWindowsTests`, `CommunicationAndModulesTests`, `DiagnosticsAndPackagingTests`).
+  - Interactive WinUI 3 acceptance passed with inspected screenshots (`MinimalNativeApp`, `BackgroundCompanionApp`, `UnifiedHostDemo`): Light/Dark theme + Mica backdrop switching (`dpiScale = 1.5`), custom title bar & caption contrast, `NavigationView`, `DesignSystem` controls, in-app `NotificationBannerControl`, click-to-open activation routing, and window resizing.
+  - Native Windows `AppNotificationManager` registration (`Registered`), platform toast submission (`SubmittedToPlatform`), suppression (`Deduplicated`, `RateLimited`, `QuietHoursActive`, `CategoryDisabled`), error preservation (`NotRegistered`, `PlatformFailure`), and supervised async activation.
+  - Graphical WinForms 5-page setup wizard (`--gui-self-test`) and CLI lifecycle (`--install`, `--upgrade`, `--verify`, `--uninstall`) with component selection and SHA-256 verification.
+- **NOT TESTED / ENVIRONMENT-CONSTRAINED LOCALLY:**
+  - `ISCC.exe` (Inno Setup 6 compiler) is absent on the local workstation; compiled Inno Setup verification runs on GitHub Actions `windows-latest`.
+  - Desktop system tray (`Shell_TrayWnd`) taskbar icon placement returned `Win32Error=0x80004005` (`HasTaskbarShell = false`) inside the isolated agent desktop (`exebox-*`); tray menu callbacks, `HideToTray`/`ShowFromTray` events, and `IWin32Interop` calls are verified via unit tests and interactive acceptance without a live Explorer taskbar window.
+  - OS toast visual banner popup appearance (`VisualDisplayConfirmed = false`) cannot be observed programmatically after `AppNotificationManager.Default.Show(...)`.
 
 ## Next Concrete Task
 
-All milestones M0–M10 are complete. Maintain `0.1.0-alpha.1` verification green on every commit.
+Monitor GitHub Actions CI run for M11 on `https://github.com/trungduc22/NativeShellKit/actions` and maintain pre-release (`0.1.0-alpha.1`) hardening.

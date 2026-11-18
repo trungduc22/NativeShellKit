@@ -9,15 +9,21 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Spacing="4">
-            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <TextBlock
                     x:Name="TitleTextBlock"
+                    Grid.Column="0"
                     FontSize="24"
                     FontWeight="SemiBold"
                     AutomationProperties.HeadingLevel="Level1"
                     TextWrapping="Wrap" />
                 <Border
                     x:Name="BadgeContainer"
+                    Grid.Column="1"
                     CornerRadius="10"
                     Padding="8,2"
                     VerticalAlignment="Center"
@@ -29,7 +35,7 @@
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource NativeShellInfoFgBrush}" />
                 </Border>
-            </StackPanel>
+            </Grid>
             <TextBlock
                 x:Name="SubtitleTextBlock"
                 FontSize="13"

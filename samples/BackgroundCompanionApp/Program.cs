@@ -22,9 +22,12 @@ public static class Program
     public static int Main(string[] args)
     {
         bool isSelfTest = args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase));
-        string? tempRoot = isSelfTest ? Path.Combine(Path.GetTempPath(), $"nsk-companion-selftest-{Guid.NewGuid():N}") : null;
-        string? mutexOverride = isSelfTest ? $"Local\\nsk_companion_selftest_{Guid.NewGuid():N}" : null;
-        string? pipeOverride = isSelfTest ? $"nsk_companion_pipe_{Guid.NewGuid():N}" : null;
+        string? interactiveOutputDir = ParseInteractiveOutputDir(args);
+        bool isolatedRun = isSelfTest || interactiveOutputDir is not null;
+
+        string? tempRoot = isolatedRun ? Path.Combine(Path.GetTempPath(), $"nsk-companion-test-{Guid.NewGuid():N}") : null;
+        string? mutexOverride = isolatedRun ? $"Local\\nsk_companion_test_{Guid.NewGuid():N}" : null;
+        string? pipeOverride = isolatedRun ? $"nsk_companion_pipe_{Guid.NewGuid():N}" : null;
 
         try
         {
@@ -33,13 +36,13 @@ public static class Program
             try
             {
                 bool acquiredPrimary = coordinator.TryAcquirePrimaryInstance();
-                if (!isSelfTest && !acquiredPrimary)
+                if (!isolatedRun && !acquiredPrimary)
                 {
                     coordinator.SignalExistingPrimaryInstanceAsync("--activate").GetAwaiter().GetResult();
                     return 0;
                 }
 
-                IStartupRegistryBackend startupBackend = isSelfTest
+                IStartupRegistryBackend startupBackend = isolatedRun
                     ? new InMemoryStartupRegistryBackend()
                     : new Win32RegistryStartupBackend();
 
@@ -63,14 +66,16 @@ public static class Program
                             .GetAwaiter().GetResult();
                     }
 
+                    int interactiveExitCode = 0;
                     ComWrappersSupport.InitializeComWrappers();
                     Application.Start(callbackParams =>
                     {
                         SynchronizationContext.SetSynchronizationContext(
                             new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                        _ = new App(host);
+                        _ = new App(host, interactiveOutputDir, code => interactiveExitCode = code);
                     });
-                    return 0;
+                    host.StopAsync().GetAwaiter().GetResult();
+                    return interactiveOutputDir is not null ? interactiveExitCode : 0;
                 }
                 finally
                 {
@@ -87,6 +92,20 @@ public static class Program
             if (tempRoot is not null && Directory.Exists(tempRoot))
                 Directory.Delete(tempRoot, recursive: true);
         }
+    }
+
+    private static string? ParseInteractiveOutputDir(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--interactive-test", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                    return Path.GetFullPath(args[i + 1]);
+                return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "interactive-screenshots"));
+            }
+        }
+        return null;
     }
 
     private static async Task<int> RunSelfTestAsync(
@@ -136,7 +155,6 @@ public static class Program
             NotificationSeverity.Info,
             DeduplicationKey: "sync-1"));
 
-        // Invoke tray menu item "Toggle Quiet Hours"
         tray.MenuItems.First(m => m.Text == "Toggle Quiet Hours").Callback?.Invoke();
         int currentHour = DateTimeOffset.Now.LocalDateTime.Hour;
         notifications.Preferences.QuietHoursStartHour = currentHour;

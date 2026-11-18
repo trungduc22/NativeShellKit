@@ -50,7 +50,7 @@ public sealed partial class NativeShellView : UserControl, INotifyPropertyChange
         TitleBar.TitleText = appTitle;
         if (themeService is Theming.WinUiThemeService winUiTheme)
         {
-            winUiTheme.AttachRoot(ShellRootGrid);
+            winUiTheme.AttachRoot(this);
         }
 
         _navigationService.Navigated += OnNavigated;
@@ -89,11 +89,28 @@ public sealed partial class NativeShellView : UserControl, INotifyPropertyChange
 
     public void SetBannerContent(object? content)
     {
+        if (DispatcherQueue is { HasThreadAccess: false })
+        {
+            DispatcherQueue.TryEnqueue(() => SetBannerContent(content));
+            return;
+        }
+
         NotificationBannerHost.Content = content;
         NotificationBannerHost.Visibility = content is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnNavigated(object? sender, Abstractions.Navigation.NavigationEventArgs e)
+    {
+        if (DispatcherQueue is { HasThreadAccess: false })
+        {
+            DispatcherQueue.TryEnqueue(() => ApplyNavigatedRoute(e));
+            return;
+        }
+
+        ApplyNavigatedRoute(e);
+    }
+
+    private void ApplyNavigatedRoute(Abstractions.Navigation.NavigationEventArgs e)
     {
         if (_navigationService is WinUiNavigationService winUiNav)
         {

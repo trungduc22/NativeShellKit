@@ -85,9 +85,13 @@ public sealed class DiagnosticsAndPackagingTests
         Directory.CreateDirectory(Path.GetDirectoryName(simulatedUserData)!);
         File.WriteAllText(simulatedUserData, "keep-me");
 
-        RunSetup(setupExe, $"--install --install-dir \"{installDir}\" --payload-dir \"{payloadDir}\" --skip-dotnet-registration");
+        RunSetup(setupExe, $"--install --components packages,cli --install-dir \"{installDir}\" --payload-dir \"{payloadDir}\" --skip-dotnet-registration");
+        Assert.True(Directory.Exists(Path.Combine(installDir, "packages")));
+        Assert.True(Directory.Exists(Path.Combine(installDir, "tools", "nsk")));
+        Assert.False(Directory.Exists(Path.Combine(installDir, "samples")));
         RunSetup(setupExe, $"--verify --install-dir \"{installDir}\"");
         RunSetup(setupExe, $"--upgrade --install-dir \"{installDir}\" --payload-dir \"{payloadDir}\" --skip-dotnet-registration");
+        Assert.True(Directory.Exists(Path.Combine(installDir, "samples")));
         RunSetup(setupExe, $"--verify --install-dir \"{installDir}\"");
         RunSetup(setupExe, $"--uninstall --install-dir \"{installDir}\" --skip-dotnet-registration");
 

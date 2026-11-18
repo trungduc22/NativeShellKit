@@ -176,7 +176,7 @@ public sealed class Win32Interop : IWin32Interop
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool NativeDestroyIcon(nint hIcon);
 
-    [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode)]
+    [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool NativeShell_NotifyIconW(uint dwMessage, ref NotifyIconData lpData);
 

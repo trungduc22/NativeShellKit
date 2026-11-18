@@ -13,6 +13,7 @@ public sealed class WinUiThemeService : IThemeService
 {
     public const string DefaultAccentHex = "#2563EB";
     private readonly List<WeakReference<FrameworkElement>> _attachedRoots = [];
+    private readonly List<WeakReference<Window>> _attachedWindows = [];
     private string? _customAccentHex;
 
     public WinUiThemeService()
@@ -34,6 +35,16 @@ public sealed class WinUiThemeService : IThemeService
         ArgumentNullException.ThrowIfNull(element);
         _attachedRoots.Add(new WeakReference<FrameworkElement>(element));
         element.RequestedTheme = ToElementTheme(CurrentMode);
+    }
+
+    public void AttachWindow(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!_attachedWindows.Any(w => w.TryGetTarget(out var existing) && ReferenceEquals(existing, window)))
+        {
+            _attachedWindows.Add(new WeakReference<Window>(window));
+        }
+        ApplyWindowTheme(window, CurrentMode, IsDarkEffective);
     }
 
     public void ApplyTheme(AppThemeMode mode, string? customAccentHex = null)
@@ -61,11 +72,26 @@ public sealed class WinUiThemeService : IThemeService
         {
             if (_attachedRoots[i].TryGetTarget(out var root))
             {
-                root.RequestedTheme = requested;
+                if (root.DispatcherQueue is { HasThreadAccess: false } queue)
+                    queue.TryEnqueue(() => root.RequestedTheme = requested);
+                else
+                    root.RequestedTheme = requested;
             }
             else
             {
                 _attachedRoots.RemoveAt(i);
+            }
+        }
+
+        for (int i = _attachedWindows.Count - 1; i >= 0; i--)
+        {
+            if (_attachedWindows[i].TryGetTarget(out var win))
+            {
+                ApplyWindowTheme(win, mode, IsDarkEffective);
+            }
+            else
+            {
+                _attachedWindows.RemoveAt(i);
             }
         }
 
@@ -95,6 +121,7 @@ public sealed class WinUiThemeService : IThemeService
     public bool TryApplyBackdrop(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
+        AttachWindow(window);
         try
         {
             if (IsMicaSupported)
@@ -113,6 +140,48 @@ public sealed class WinUiThemeService : IThemeService
             // Headless or unsupported compositor falls back to solid surface background
         }
         return false;
+    }
+
+    private static void ApplyWindowTheme(Window window, AppThemeMode mode, bool isDark)
+    {
+        var requested = ToElementTheme(mode);
+        void Apply()
+        {
+            if (window.Content is FrameworkElement contentRoot)
+            {
+                contentRoot.RequestedTheme = requested;
+            }
+
+            try
+            {
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+                if (hwnd != nint.Zero)
+                {
+                    var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+                    var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+                    if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported() && appWindow.TitleBar.ExtendsContentIntoTitleBar)
+                    {
+                        var fg = isDark ? Color.FromArgb(255, 248, 250, 252) : Color.FromArgb(255, 15, 23, 42);
+                        var inactiveFg = isDark ? Color.FromArgb(160, 248, 250, 252) : Color.FromArgb(160, 15, 23, 42);
+                        var hoverBg = isDark ? Color.FromArgb(24, 255, 255, 255) : Color.FromArgb(20, 15, 23, 42);
+                        appWindow.TitleBar.ButtonForegroundColor = fg;
+                        appWindow.TitleBar.ButtonHoverForegroundColor = fg;
+                        appWindow.TitleBar.ButtonPressedForegroundColor = fg;
+                        appWindow.TitleBar.ButtonInactiveForegroundColor = inactiveFg;
+                        appWindow.TitleBar.ButtonHoverBackgroundColor = hoverBg;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore if window handle is not yet created or closed
+            }
+        }
+
+        if (window.DispatcherQueue is { HasThreadAccess: false } queue)
+            queue.TryEnqueue(Apply);
+        else
+            Apply();
     }
 
     private static void ApplyToApplicationResources(AccentColorPalette palette)

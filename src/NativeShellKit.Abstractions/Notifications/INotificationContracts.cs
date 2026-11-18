@@ -52,12 +52,39 @@ public sealed class NotificationDeliveryPreferences
     public HashSet<string> DisabledCategories { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
+public enum NativeNotificationRegistrationStatus
+{
+    Unregistered,
+    Registered,
+    Failed,
+    UnsupportedPlatform
+}
+
+public enum NativeNotificationSubmissionStatus
+{
+    NotAttempted,
+    SubmittedToPlatform,
+    Suppressed,
+    NotRegistered,
+    PlatformFailure
+}
+
+public sealed record NativeNotificationSubmissionResult(
+    NativeNotificationSubmissionStatus Status,
+    bool SubmittedToPlatform,
+    string? PlatformNotificationTag = null,
+    string? ErrorMessage = null,
+    Exception? Exception = null);
+
 public sealed record NotificationDispatchResult(
     string NotificationId,
     bool Persisted,
     bool PresentedInApp,
     bool PresentedNatively,
-    string? SuppressedReason = null);
+    string? SuppressedReason = null,
+    NativeNotificationSubmissionStatus NativeSubmissionStatus = NativeNotificationSubmissionStatus.NotAttempted,
+    string? NativeErrorMessage = null,
+    bool VisualDisplayConfirmed = false);
 
 public sealed record NotificationActivationArgs(
     string AppId,
@@ -83,7 +110,9 @@ public sealed record NotificationRecord(
 public interface INativeNotificationPresenter
 {
     bool IsRegistered { get; }
-    void Present(
+    NativeNotificationRegistrationStatus RegistrationStatus { get; }
+    string? RegistrationError { get; }
+    NativeNotificationSubmissionResult Present(
         string sourceAppId,
         AppNotificationRequest request,
         string resolvedNotificationId,
@@ -103,6 +132,7 @@ public interface INotificationService
     NotificationDeliveryPreferences Preferences { get; }
     event EventHandler<NotificationRecord>? InAppNotificationRaised;
     event EventHandler<NotificationActivationArgs>? NotificationActivated;
+    event EventHandler<(string RawArguments, Exception Error)>? ActivationFailed;
 
     Task<NotificationDispatchResult> PublishAsync(AppNotificationRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<NotificationRecord>> GetHistoryAsync(int maxCount = 100, CancellationToken ct = default);
@@ -110,5 +140,6 @@ public interface INotificationService
 
     string BuildActivationArguments(string notificationId, string actionId, string? destinationRoute = null);
     Task<bool> TryHandleActivationAsync(string rawArgumentString, CancellationToken ct = default);
+    Task DispatchPlatformActivationAsync(string rawArgumentString, CancellationToken ct = default);
     void RegisterActionHandler(string actionId, Func<NotificationActivationArgs, Task> handler);
 }

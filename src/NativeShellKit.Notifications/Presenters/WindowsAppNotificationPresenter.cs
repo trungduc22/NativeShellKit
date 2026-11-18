@@ -2,47 +2,76 @@ using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
 using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Settings;
 
 namespace NativeShellKit.Notifications.Presenters;
 
 /// <summary>
-/// Presents native Windows App SDK toast notifications via AppNotificationManager,
-/// tagging notifications per AppIdentity and forwarding activation payloads safely.
+/// Presents native Windows App SDK toast notifications via <see cref="AppNotificationManager"/>,
+/// separating registration state, platform submission result, diagnostic errors, and supervised async activation.
 /// </summary>
 public sealed class WindowsAppNotificationPresenter : INativeNotificationPresenter, IDisposable
 {
     private readonly AppIdentity _identity;
+    private readonly ISdkLogger? _logger;
     private bool _registered;
     private bool _disposed;
 
-    public WindowsAppNotificationPresenter(AppIdentity identity, Action<string>? onActivated = null)
+    public WindowsAppNotificationPresenter(
+        AppIdentity identity,
+        Action<string>? onActivated = null,
+        ISdkLogger? logger = null)
     {
         _identity = identity ?? throw new ArgumentNullException(nameof(identity));
+        _logger = logger;
         ActivatedCallback = onActivated;
+
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
+        {
+            RegistrationStatus = NativeNotificationRegistrationStatus.UnsupportedPlatform;
+            RegistrationError = "Windows 10 build 17763 or later is required for AppNotificationManager.";
+            return;
+        }
 
         try
         {
             AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
             AppNotificationManager.Default.Register();
             _registered = true;
+            RegistrationStatus = NativeNotificationRegistrationStatus.Registered;
         }
-        catch
+        catch (Exception ex)
         {
             _registered = false;
+            RegistrationStatus = NativeNotificationRegistrationStatus.Failed;
+            RegistrationError = ex.Message;
+            try { AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked; } catch { }
+            _logger?.Log(SdkLogLevel.Warning, nameof(WindowsAppNotificationPresenter),
+                $"AppNotificationManager registration failed for '{_identity.AppId}': {ex.Message}", ex);
         }
     }
 
     public bool IsRegistered => _registered;
+    public NativeNotificationRegistrationStatus RegistrationStatus { get; private set; }
+    public string? RegistrationError { get; private set; }
     public Action<string>? ActivatedCallback { get; set; }
+    public Func<string, Task>? AsyncActivatedCallback { get; set; }
 
-    public void Present(
+    public NativeNotificationSubmissionResult Present(
         string sourceAppId,
         AppNotificationRequest request,
         string resolvedNotificationId,
         string launchArguments)
     {
-        if (!_registered || _disposed)
-            return;
+        if (_disposed || !_registered)
+        {
+            return new NativeNotificationSubmissionResult(
+                NativeNotificationSubmissionStatus.NotRegistered,
+                SubmittedToPlatform: false,
+                ErrorMessage: _disposed
+                    ? "Presenter has already been disposed."
+                    : RegistrationError ?? "AppNotificationManager is not registered.");
+        }
 
         try
         {
@@ -88,17 +117,61 @@ public sealed class WindowsAppNotificationPresenter : INativeNotificationPresent
                 notification.Expiration = DateTimeOffset.UtcNow.Add(request.Expiration.Value);
 
             AppNotificationManager.Default.Show(notification);
+
+            _logger?.Log(SdkLogLevel.Debug, nameof(WindowsAppNotificationPresenter),
+                $"Submitted native notification '{resolvedNotificationId}' (tag={notification.Tag}, group={notification.Group}).");
+
+            return new NativeNotificationSubmissionResult(
+                NativeNotificationSubmissionStatus.SubmittedToPlatform,
+                SubmittedToPlatform: true,
+                PlatformNotificationTag: notification.Tag);
         }
-        catch
+        catch (Exception ex)
         {
-            // Native notification service unavailable on headless/isolated session
+            _logger?.Log(SdkLogLevel.Error, nameof(WindowsAppNotificationPresenter),
+                $"Native notification submission failed for '{resolvedNotificationId}': {ex.Message}", ex);
+
+            return new NativeNotificationSubmissionResult(
+                NativeNotificationSubmissionStatus.PlatformFailure,
+                SubmittedToPlatform: false,
+                ErrorMessage: ex.Message,
+                Exception: ex);
         }
     }
 
     private void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
     {
-        if (!string.IsNullOrWhiteSpace(args.Argument))
-            ActivatedCallback?.Invoke(args.Argument);
+        if (string.IsNullOrWhiteSpace(args.Argument))
+            return;
+
+        if (AsyncActivatedCallback is not null)
+        {
+            try
+            {
+                var task = AsyncActivatedCallback(args.Argument);
+                task.ContinueWith(
+                    faulted =>
+                    {
+                        var ex = faulted.Exception?.GetBaseException();
+                        if (ex is not null)
+                        {
+                            _logger?.Log(SdkLogLevel.Error, nameof(WindowsAppNotificationPresenter),
+                                $"Supervised notification activation task failed: {ex.Message}", ex);
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Log(SdkLogLevel.Error, nameof(WindowsAppNotificationPresenter),
+                    $"Failed to start async notification activation handler: {ex.Message}", ex);
+            }
+            return;
+        }
+
+        ActivatedCallback?.Invoke(args.Argument);
     }
 
     private static string TrimMax(string value, int maxLen) =>
@@ -112,14 +185,16 @@ public sealed class WindowsAppNotificationPresenter : INativeNotificationPresent
         if (_registered)
         {
             _registered = false;
+            RegistrationStatus = NativeNotificationRegistrationStatus.Unregistered;
             try
             {
                 AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
                 AppNotificationManager.Default.Unregister();
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore cleanup failure in unpackaged or restricted sessions
+                _logger?.Log(SdkLogLevel.Debug, nameof(WindowsAppNotificationPresenter),
+                    $"AppNotificationManager cleanup failed during Dispose: {ex.Message}", ex);
             }
         }
     }

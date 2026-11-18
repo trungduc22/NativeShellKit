@@ -29,6 +29,7 @@ public sealed class NativeTrayService : IDisposable
     private bool _iconAdded;
     private bool _allowClose;
     private bool _disposed;
+    private bool _useGuidFlag = true;
 
     public NativeTrayService(
         AppIdentity identity,
@@ -42,6 +43,8 @@ public sealed class NativeTrayService : IDisposable
     }
 
     public bool IsIconActive => _iconAdded;
+    public bool HasTaskbarShell => _interop.FindWindow("Shell_TrayWnd", null) != nint.Zero;
+    public string? LastTrayError { get; private set; }
     public bool MinimizeToTrayOnClose { get; set; } = true;
     public IReadOnlyList<TrayMenuItem> MenuItems => _menuItems;
 
@@ -117,14 +120,33 @@ public sealed class NativeTrayService : IDisposable
 
     private bool AddOrUpdateTrayIcon()
     {
-        var data = BuildNotifyIconData();
+        var data = BuildNotifyIconData(_useGuidFlag);
         uint msg = _iconAdded ? Win32Constants.NIM_MODIFY : Win32Constants.NIM_ADD;
         bool ok = _interop.ShellNotifyIcon(msg, ref data);
-        if (ok && !_iconAdded)
+        if (!ok && !_iconAdded && _useGuidFlag)
         {
-            _iconAdded = true;
-            data.uTimeoutOrVersion = Win32Constants.NOTIFYICON_VERSION_4;
-            _interop.ShellNotifyIcon(Win32Constants.NIM_SETVERSION, ref data);
+            // Retry without NIF_GUID on unpackaged/relocated executables where Shell rejects stale GUID paths
+            _useGuidFlag = false;
+            data = BuildNotifyIconData(includeGuid: false);
+            ok = _interop.ShellNotifyIcon(Win32Constants.NIM_ADD, ref data);
+        }
+
+        if (ok)
+        {
+            LastTrayError = null;
+            if (!_iconAdded)
+            {
+                _iconAdded = true;
+                data.uTimeoutOrVersion = Win32Constants.NOTIFYICON_VERSION_4;
+                _interop.ShellNotifyIcon(Win32Constants.NIM_SETVERSION, ref data);
+            }
+        }
+        else
+        {
+            int err = Marshal.GetLastWin32Error();
+            LastTrayError = HasTaskbarShell
+                ? $"Shell_NotifyIconW returned false (Win32Error=0x{err:X8})."
+                : $"Shell_TrayWnd taskbar window is not available on current desktop (Win32Error=0x{err:X8}).";
         }
         return ok;
     }
@@ -134,23 +156,25 @@ public sealed class NativeTrayService : IDisposable
         if (!_iconAdded || _hwnd == nint.Zero)
             return;
 
-        var data = BuildNotifyIconData();
+        var data = BuildNotifyIconData(_useGuidFlag);
         _interop.ShellNotifyIcon(Win32Constants.NIM_DELETE, ref data);
         _iconAdded = false;
     }
 
-    private NotifyIconData BuildNotifyIconData() => new()
+    private NotifyIconData BuildNotifyIconData(bool includeGuid) => new()
     {
         cbSize = Marshal.SizeOf<NotifyIconData>(),
         hWnd = _hwnd,
         uID = 1,
-        uFlags = Win32Constants.NIF_MESSAGE | Win32Constants.NIF_TIP | Win32Constants.NIF_GUID | (_hIcon != nint.Zero ? Win32Constants.NIF_ICON : 0u),
+        uFlags = Win32Constants.NIF_MESSAGE | Win32Constants.NIF_TIP |
+                 (includeGuid ? Win32Constants.NIF_GUID : 0u) |
+                 (_hIcon != nint.Zero ? Win32Constants.NIF_ICON : 0u),
         uCallbackMessage = TrayCallbackMessage,
         hIcon = _hIcon,
         szTip = Truncate(_identity.DisplayName, 127),
         szInfo = string.Empty,
         szInfoTitle = string.Empty,
-        guidItem = _identity.TrayIconGuid
+        guidItem = includeGuid ? _identity.TrayIconGuid : Guid.Empty
     };
 
     private nint WindowSubclassCallback(nint hWnd, uint uMsg, nint wParam, nint lParam, nuint uIdSubclass, nint dwRefData)

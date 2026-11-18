@@ -3,6 +3,7 @@ using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Lifecycle;
 using NativeShellKit.Abstractions.Navigation;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Settings;
 using NativeShellKit.Hosting.Hosting;
 using NativeShellKit.Notifications.History;
 using NativeShellKit.Notifications.Presenters;
@@ -28,7 +29,10 @@ public static class NotificationHostExtensions
             else
             {
                 services.AddSingleton<INativeNotificationPresenter>(sp =>
-                    new WindowsAppNotificationPresenter(sp.GetRequiredService<AppIdentity>()));
+                    new WindowsAppNotificationPresenter(
+                        sp.GetRequiredService<AppIdentity>(),
+                        onActivated: null,
+                        logger: sp.GetService<ISdkLogger>()));
             }
 
             services.AddSingleton<INotificationService>(sp =>
@@ -39,11 +43,14 @@ public static class NotificationHostExtensions
                     sp.GetRequiredService<INotificationHistoryStore>(),
                     presenter,
                     sp.GetService<INavigationService>(),
-                    sp.GetService<IAppLifecycleService>());
+                    sp.GetService<IAppLifecycleService>(),
+                    clock: null,
+                    taskSupervisor: sp.GetService<IBackgroundTaskSupervisor>(),
+                    logger: sp.GetService<ISdkLogger>());
 
                 if (presenter is WindowsAppNotificationPresenter winPresenter)
                 {
-                    winPresenter.ActivatedCallback = args => _ = svc.TryHandleActivationAsync(args);
+                    winPresenter.AsyncActivatedCallback = args => svc.DispatchPlatformActivationAsync(args);
                 }
 
                 return svc;

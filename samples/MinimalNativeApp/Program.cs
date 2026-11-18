@@ -6,6 +6,7 @@ using NativeShellKit.Abstractions.Navigation;
 using NativeShellKit.Abstractions.Settings;
 using NativeShellKit.Diagnostics;
 using NativeShellKit.Hosting.Hosting;
+using NativeShellKit.Windows;
 using NativeShellKit.WinUI;
 using WinRT;
 
@@ -23,14 +24,20 @@ public static class Program
     public static int Main(string[] args)
     {
         bool isSelfTest = args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase));
-        string? tempRoot = isSelfTest ? Path.Combine(Path.GetTempPath(), $"nsk-min-selftest-{Guid.NewGuid():N}") : null;
+        string? interactiveOutputDir = ParseInteractiveOutputDir(args);
+        bool isolatedRun = isSelfTest || interactiveOutputDir is not null;
+        string? tempRoot = isolatedRun ? Path.Combine(Path.GetTempPath(), $"nsk-min-test-{Guid.NewGuid():N}") : null;
 
         try
         {
             var identity = new AppIdentity("minimalnativeapp", "Minimal Native App", "NativeShellKit", "0.1.0", tempRoot);
             var builder = NativeShellHostBuilder.Create(identity, args)
                 .AddWinUiShell()
-                .ConfigureServices(services => services.AddSecurityAndDiagnostics());
+                .ConfigureServices(services =>
+                {
+                    services.AddWindowsServices();
+                    services.AddSecurityAndDiagnostics();
+                });
 
             var host = builder.Build();
             try
@@ -40,14 +47,16 @@ public static class Program
                     return RunSelfTestAsync(host).GetAwaiter().GetResult();
                 }
 
+                int interactiveExitCode = 0;
                 ComWrappersSupport.InitializeComWrappers();
                 Application.Start(callbackParams =>
                 {
                     SynchronizationContext.SetSynchronizationContext(
                         new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                    _ = new App(host);
+                    _ = new App(host, interactiveOutputDir, code => interactiveExitCode = code);
                 });
-                return 0;
+                host.StopAsync().GetAwaiter().GetResult();
+                return interactiveOutputDir is not null ? interactiveExitCode : 0;
             }
             finally
             {
@@ -59,6 +68,20 @@ public static class Program
             if (tempRoot is not null && Directory.Exists(tempRoot))
                 Directory.Delete(tempRoot, recursive: true);
         }
+    }
+
+    private static string? ParseInteractiveOutputDir(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--interactive-test", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                    return Path.GetFullPath(args[i + 1]);
+                return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "interactive-screenshots"));
+            }
+        }
+        return null;
     }
 
     private static async Task<int> RunSelfTestAsync(NativeShellHost host)

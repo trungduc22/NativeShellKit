@@ -4,6 +4,7 @@ param(
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
     [string]$AdditionalNuGetSource = "",
+    [string]$IsccPath = "",
     [switch]$SkipSelfTest
 )
 
@@ -81,22 +82,59 @@ if ($LASTEXITCODE -ne 0) { throw "Installer build failed ($LASTEXITCODE)." }
 $setupExe = Join-Path $devKitRoot "NativeShellKit-DeveloperKit-Setup-x64.exe"
 if (-not (Test-Path $setupExe)) { throw "Expected setup exe missing: $setupExe" }
 
-Write-Host "[4/5] Checking optional Inno Setup compiler (ISCC.exe)..."
-$iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
-if (-not $iscc) {
-    $candidates = @(
+function Resolve-IsccCompilerPath {
+    param([string]$ExplicitPath = "")
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (-not (Test-Path -LiteralPath $ExplicitPath -PathType Leaf)) {
+            throw "Specified Inno Setup compiler path does not exist or is not a file: '$ExplicitPath'"
+        }
+        return (Resolve-Path -LiteralPath $ExplicitPath).Path
+    }
+
+    $cmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $cmd) {
+        $candidate = @($cmd.Source, $cmd.Path, $cmd.Definition) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -First 1
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return [string]$candidate
+        }
+        Write-Warning "Get-Command returned ISCC.exe without a valid file path ('$candidate'). Checking standard install directories..."
+    }
+
+    $standardPaths = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
     )
-    $foundPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($foundPath) { $iscc = Get-Item $foundPath }
+    foreach ($candidate in $standardPaths) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return [string]$candidate
+        }
+    }
+
+    return $null
 }
-if ($iscc) {
-    & $iscc.FullName (Join-Path $repoRoot "packaging\DeveloperKit\DeveloperKit.iss") "/DAppVersion=$Version" "/DPayloadDir=$payloadDir"
-    if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)." }
+
+Write-Host "[4/5] Checking optional Inno Setup compiler (ISCC.exe)..."
+[string]$isccPath = Resolve-IsccCompilerPath -ExplicitPath $IsccPath
+if (-not [string]::IsNullOrWhiteSpace($isccPath)) {
+    Write-Host "  [status] ISCC.exe FOUND: '$isccPath'"
+    $innoOutDir = Join-Path $devKitRoot "inno"
+    New-Item -ItemType Directory -Force -Path $innoOutDir | Out-Null
+    $issScript = Join-Path $repoRoot "packaging\DeveloperKit\DeveloperKit.iss"
+    & $isccPath $issScript "/DAppVersion=$Version" "/DPayloadDir=$payloadDir" "/O$innoOutDir"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Inno Setup compiler failed (exit code $LASTEXITCODE) executing '$isccPath' on '$issScript'."
+    }
+    $innoExe = Join-Path $innoOutDir "NativeShellKit-DeveloperKit-InnoSetup-x64.exe"
+    if (-not (Test-Path -LiteralPath $innoExe -PathType Leaf)) {
+        throw "Inno Setup compiler completed without producing expected installer: '$innoExe'"
+    }
+    Write-Host "  [status] Inno Setup installer compiled: '$innoExe' ($((Get-Item $innoExe).Length) bytes)"
 } else {
-    Write-Host "  ISCC.exe not installed on this machine; compiled native setup executable '$setupExe' + DeveloperKit.iss script."
+    Write-Host "  [status] ISCC.exe UNAVAILABLE (optional): using compiled native GUI/CLI installer '$setupExe' + DeveloperKit.iss script."
 }
 
 if (-not $SkipSelfTest) {

@@ -3,6 +3,7 @@ namespace NativeShellKit.Abstractions.DependencyInjection;
 public enum ServiceLifetimeKind
 {
     Singleton,
+    Scoped,
     Transient
 }
 
@@ -13,8 +14,20 @@ public sealed record ServiceDescriptorEntry(
     Func<IServiceProvider, object>? Factory,
     ServiceLifetimeKind Lifetime);
 
+public interface IShellServiceScope : Microsoft.Extensions.DependencyInjection.IServiceScope, IAsyncDisposable
+{
+}
+
+public interface IShellServiceScopeFactory : Microsoft.Extensions.DependencyInjection.IServiceScopeFactory
+{
+    new IShellServiceScope CreateScope();
+}
+
 public interface IServiceRegistry
 {
+    IReadOnlyList<ServiceDescriptorEntry> Descriptors { get; }
+    bool Contains(Type serviceType);
+
     void Add(ServiceDescriptorEntry descriptor);
 
     IServiceRegistry AddSingleton<TService>(TService instance) where TService : class;
@@ -22,6 +35,11 @@ public interface IServiceRegistry
         where TService : class
         where TImplementation : class, TService;
     IServiceRegistry AddSingleton<TService>(Func<IServiceProvider, TService> factory) where TService : class;
+
+    IServiceRegistry AddScoped<TService, TImplementation>()
+        where TService : class
+        where TImplementation : class, TService;
+    IServiceRegistry AddScoped<TService>(Func<IServiceProvider, TService> factory) where TService : class;
 
     IServiceRegistry AddTransient<TService, TImplementation>()
         where TService : class

@@ -4,6 +4,7 @@ using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Lifecycle;
 using NativeShellKit.Abstractions.Navigation;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Settings;
 
 namespace NativeShellKit.Notifications;
 
@@ -14,6 +15,8 @@ public sealed class UnifiedNotificationService : INotificationService
     private readonly INativeNotificationPresenter? _nativePresenter;
     private readonly INavigationService? _navigationService;
     private readonly IAppLifecycleService? _lifecycleService;
+    private readonly IBackgroundTaskSupervisor? _taskSupervisor;
+    private readonly ISdkLogger? _logger;
     private readonly Func<DateTimeOffset> _clock;
 
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dedupTimestamps = new(StringComparer.OrdinalIgnoreCase);
@@ -27,19 +30,24 @@ public sealed class UnifiedNotificationService : INotificationService
         INativeNotificationPresenter? nativePresenter = null,
         INavigationService? navigationService = null,
         IAppLifecycleService? lifecycleService = null,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null,
+        IBackgroundTaskSupervisor? taskSupervisor = null,
+        ISdkLogger? logger = null)
     {
         _identity = identity ?? throw new ArgumentNullException(nameof(identity));
         _historyStore = historyStore ?? throw new ArgumentNullException(nameof(historyStore));
         _nativePresenter = nativePresenter;
         _navigationService = navigationService;
         _lifecycleService = lifecycleService;
+        _taskSupervisor = taskSupervisor;
+        _logger = logger;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     public NotificationDeliveryPreferences Preferences { get; } = new();
     public event EventHandler<NotificationRecord>? InAppNotificationRaised;
     public event EventHandler<NotificationActivationArgs>? NotificationActivated;
+    public event EventHandler<(string RawArguments, Exception Error)>? ActivationFailed;
 
     public async Task<NotificationDispatchResult> PublishAsync(AppNotificationRequest request, CancellationToken ct = default)
     {
@@ -75,7 +83,14 @@ public sealed class UnifiedNotificationService : INotificationService
         string? suppressedReason = EvaluateSuppressionReason(request, now);
         if (suppressedReason is not null)
         {
-            return new NotificationDispatchResult(notificationId, Persisted: true, PresentedInApp: false, PresentedNatively: false, suppressedReason);
+            return new NotificationDispatchResult(
+                notificationId,
+                Persisted: true,
+                PresentedInApp: false,
+                PresentedNatively: false,
+                SuppressedReason: suppressedReason,
+                NativeSubmissionStatus: NativeNotificationSubmissionStatus.Suppressed,
+                VisualDisplayConfirmed: false);
         }
 
         bool presentedInApp = false;
@@ -86,14 +101,74 @@ public sealed class UnifiedNotificationService : INotificationService
         }
 
         bool presentedNatively = false;
+        var nativeStatus = NativeNotificationSubmissionStatus.NotAttempted;
+        string? nativeError = null;
         if (Preferences.EnableNativeWindowsToasts && _nativePresenter is not null)
         {
             string launchArgs = BuildActivationArguments(notificationId, "open", request.ActivationDestination);
-            _nativePresenter.Present(_identity.AppId, request, notificationId, launchArgs);
-            presentedNatively = _nativePresenter.IsRegistered;
+            var submission = _nativePresenter.Present(_identity.AppId, request, notificationId, launchArgs);
+            nativeStatus = submission.Status;
+            nativeError = submission.ErrorMessage;
+            presentedNatively = submission.SubmittedToPlatform;
         }
 
-        return new NotificationDispatchResult(notificationId, Persisted: true, presentedInApp, presentedNatively);
+        return new NotificationDispatchResult(
+            notificationId,
+            Persisted: true,
+            presentedInApp,
+            presentedNatively,
+            NativeSubmissionStatus: nativeStatus,
+            NativeErrorMessage: nativeError,
+            VisualDisplayConfirmed: false);
+    }
+
+    public Task DispatchPlatformActivationAsync(string rawArgumentString, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(rawArgumentString))
+            return Task.CompletedTask;
+
+        async Task ExecuteSupervisedAsync(CancellationToken token)
+        {
+            try
+            {
+                bool handled = await TryHandleActivationAsync(rawArgumentString, token).ConfigureAwait(false);
+                if (!handled)
+                {
+                    _logger?.Log(SdkLogLevel.Warning, nameof(UnifiedNotificationService),
+                        $"Ignored notification activation for '{_identity.AppId}': mismatched appId or malformed payload.");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.Log(SdkLogLevel.Error, nameof(UnifiedNotificationService),
+                    $"Notification activation handler threw an exception: {ex.Message}", ex);
+                ActivationFailed?.Invoke(this, (rawArgumentString, ex));
+                throw;
+            }
+        }
+
+        if (_taskSupervisor is not null)
+        {
+            return _taskSupervisor.RunSupervisedAsync($"notification-activation:{_identity.AppId}", ExecuteSupervisedAsync);
+        }
+
+        return ExecuteGuardedAsync(ExecuteSupervisedAsync, ct);
+    }
+
+    private static async Task ExecuteGuardedAsync(Func<CancellationToken, Task> work, CancellationToken ct)
+    {
+        try
+        {
+            await work(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Normal cancellation
+        }
+        catch
+        {
+            // Exception already logged and forwarded via ActivationFailed; prevent unobserved task crash.
+        }
     }
 
     public Task<IReadOnlyList<NotificationRecord>> GetHistoryAsync(int maxCount = 100, CancellationToken ct = default) =>

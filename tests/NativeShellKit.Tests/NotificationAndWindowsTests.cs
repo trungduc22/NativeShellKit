@@ -1,7 +1,11 @@
 using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Settings;
+using NativeShellKit.Diagnostics.Logging;
+using NativeShellKit.Hosting.Hosting;
 using NativeShellKit.Notifications;
 using NativeShellKit.Notifications.History;
+using NativeShellKit.Notifications.Presenters;
 using NativeShellKit.Tray;
 using NativeShellKit.Windows.Interop;
 using NativeShellKit.Windows.Platform;
@@ -14,13 +18,30 @@ namespace NativeShellKit.Tests;
 
 public sealed class NotificationAndWindowsTests
 {
-    private sealed class RecordingNativePresenter(bool isRegistered = true) : INativeNotificationPresenter
+    private sealed class RecordingNativePresenter(
+        NativeNotificationRegistrationStatus regStatus = NativeNotificationRegistrationStatus.Registered,
+        NativeNotificationSubmissionStatus subStatus = NativeNotificationSubmissionStatus.SubmittedToPlatform,
+        string? errorMsg = null) : INativeNotificationPresenter
     {
-        public bool IsRegistered { get; } = isRegistered;
+        public bool IsRegistered => regStatus == NativeNotificationRegistrationStatus.Registered;
+        public NativeNotificationRegistrationStatus RegistrationStatus { get; } = regStatus;
+        public string? RegistrationError { get; } = regStatus == NativeNotificationRegistrationStatus.Failed ? errorMsg : null;
         public List<(string AppId, string Id, string Args)> Presented { get; } = [];
 
-        public void Present(string sourceAppId, AppNotificationRequest request, string resolvedNotificationId, string launchArguments) =>
+        public NativeNotificationSubmissionResult Present(
+            string sourceAppId,
+            AppNotificationRequest request,
+            string resolvedNotificationId,
+            string launchArguments)
+        {
             Presented.Add((sourceAppId, resolvedNotificationId, launchArguments));
+            bool ok = subStatus == NativeNotificationSubmissionStatus.SubmittedToPlatform;
+            return new NativeNotificationSubmissionResult(
+                subStatus,
+                SubmittedToPlatform: ok,
+                PlatformNotificationTag: ok ? resolvedNotificationId : null,
+                ErrorMessage: errorMsg);
+        }
     }
 
     private sealed class FakeTrayInterop : IWin32Interop
@@ -64,15 +85,18 @@ public sealed class NotificationAndWindowsTests
         var service = new UnifiedNotificationService(identity, history, presenter, clock: () => now);
         service.Preferences.MaxNotificationsPerMinute = 2;
 
-        // 1. First notification succeeds & presents natively
+        // 1. First notification submits to platform; VisualDisplayConfirmed stays false unless interactively confirmed
         var res1 = await service.PublishAsync(new AppNotificationRequest("Build", "Done", NotificationSeverity.Success, DeduplicationKey: "k1"));
         Assert.True(res1.Persisted && res1.PresentedInApp && res1.PresentedNatively);
+        Assert.Equal(NativeNotificationSubmissionStatus.SubmittedToPlatform, res1.NativeSubmissionStatus);
+        Assert.False(res1.VisualDisplayConfirmed);
         Assert.Null(res1.SuppressedReason);
 
         // 2. Duplicate within window is persisted to history but suppressed for toast/banner
         var resDup = await service.PublishAsync(new AppNotificationRequest("Build", "Done again", NotificationSeverity.Info, DeduplicationKey: "k1"));
         Assert.True(resDup.Persisted);
         Assert.False(resDup.PresentedNatively);
+        Assert.Equal(NativeNotificationSubmissionStatus.Suppressed, resDup.NativeSubmissionStatus);
         Assert.Equal("Deduplicated", resDup.SuppressedReason);
 
         // 3. Second distinct notification uses up MaxNotificationsPerMinute=2; third hits RateLimited
@@ -107,6 +131,86 @@ public sealed class NotificationAndWindowsTests
 
         await service.ClearHistoryAsync();
         Assert.Empty(await service.GetHistoryAsync(20));
+    }
+
+    [Fact]
+    public async Task NotificationService_PreservesPlatformFailuresAndSupervisesActivationErrors()
+    {
+        using var tmp = new TempRootScope();
+        var identity = new AppIdentity("notifyfail", "Notify Fail", baseDataRoot: tmp.RootPath);
+        var history = new JsonNotificationHistoryStore(identity);
+        var logger = new RedactingFileLogger(identity);
+        await using var supervisor = new BackgroundTaskSupervisor(logger);
+
+        // Unregistered / failed presenter reports NotRegistered rather than faking success
+        var failedPresenter = new RecordingNativePresenter(
+            NativeNotificationRegistrationStatus.Failed,
+            NativeNotificationSubmissionStatus.NotRegistered,
+            "COM registration failed");
+        var svcNotReg = new UnifiedNotificationService(identity, history, failedPresenter, taskSupervisor: supervisor, logger: logger);
+        var notRegResult = await svcNotReg.PublishAsync(new AppNotificationRequest("Hello", "Body"));
+        Assert.False(notRegResult.PresentedNatively);
+        Assert.Equal(NativeNotificationSubmissionStatus.NotRegistered, notRegResult.NativeSubmissionStatus);
+        Assert.Equal("COM registration failed", notRegResult.NativeErrorMessage);
+        Assert.False(notRegResult.VisualDisplayConfirmed);
+
+        // Registered presenter whose Show() throws reports PlatformFailure + error diagnostics
+        var errorPresenter = new RecordingNativePresenter(
+            NativeNotificationRegistrationStatus.Registered,
+            NativeNotificationSubmissionStatus.PlatformFailure,
+            "WinRT toast service returned 0x80070490");
+        var svcError = new UnifiedNotificationService(identity, history, errorPresenter, taskSupervisor: supervisor, logger: logger);
+        var errResult = await svcError.PublishAsync(new AppNotificationRequest("Alert", "Body"));
+        Assert.False(errResult.PresentedNatively);
+        Assert.Equal(NativeNotificationSubmissionStatus.PlatformFailure, errResult.NativeSubmissionStatus);
+        Assert.Contains("0x80070490", errResult.NativeErrorMessage);
+
+        // Supervised activation catches & reports handler errors via supervisor + ActivationFailed event
+        svcError.RegisterActionHandler("boom", _ => throw new InvalidOperationException("handler-crash"));
+        var activationFailedTcs = new TaskCompletionSource<Exception>();
+        var supervisorFailedTcs = new TaskCompletionSource<string>();
+        svcError.ActivationFailed += (_, tuple) => activationFailedTcs.TrySetResult(tuple.Error);
+        supervisor.TaskFailed += (name, _) => supervisorFailedTcs.TrySetResult(name);
+
+        var badArgs = svcError.BuildActivationArguments("n1", "boom");
+        await svcError.DispatchPlatformActivationAsync(badArgs);
+
+        var ex = await activationFailedTcs.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var taskName = await supervisorFailedTcs.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("handler-crash", ex.Message);
+        Assert.Contains("notifyfail", taskName);
+    }
+
+    [Fact]
+    public void WindowsAppNotificationPresenter_TracksRealRegistrationAndSubmissionStateSafely()
+    {
+        using var tmp = new TempRootScope();
+        var identity = new AppIdentity("realpresenter", "Real Presenter", baseDataRoot: tmp.RootPath);
+        var logger = new RedactingFileLogger(identity);
+
+        using var presenter = new WindowsAppNotificationPresenter(identity, logger: logger);
+        Assert.True(
+            presenter.RegistrationStatus is NativeNotificationRegistrationStatus.Registered
+                or NativeNotificationRegistrationStatus.Failed);
+
+        var submission = presenter.Present(
+            identity.AppId,
+            new AppNotificationRequest("Test", "Diagnostics check"),
+            "test-1",
+            "appId=realpresenter&notificationId=test-1&action=open");
+
+        if (presenter.IsRegistered)
+        {
+            Assert.True(
+                submission.Status is NativeNotificationSubmissionStatus.SubmittedToPlatform
+                    or NativeNotificationSubmissionStatus.PlatformFailure);
+        }
+        else
+        {
+            Assert.Equal(NativeNotificationSubmissionStatus.NotRegistered, submission.Status);
+            Assert.False(submission.SubmittedToPlatform);
+            Assert.False(string.IsNullOrWhiteSpace(presenter.RegistrationError));
+        }
     }
 
     [Fact]

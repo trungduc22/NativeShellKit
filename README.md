@@ -60,6 +60,7 @@ dotnet new nativeshellkit -n MyNextApp -o .\MyNextApp
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Pre-Migration Compatibility Matrix](docs/migrations/PRE_MIGRATION_COMPATIBILITY_MATRIX.md)
 - [Versioning & Upgrade Policy](docs/VERSIONING_AND_UPGRADE_POLICY.md)
 - [Development State](docs/DEVELOPMENT_STATE.md)
 - [Agent Guide](AGENTS.md)

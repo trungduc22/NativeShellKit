@@ -18,6 +18,7 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
     <PackageReference Include="NativeShellKit.Abstractions" Version="0.1.0-alpha.1" />
     <PackageReference Include="NativeShellKit.Hosting" Version="0.1.0-alpha.1" />
+    <PackageReference Include="NativeShellKit.Windows" Version="0.1.0-alpha.1" />
     <PackageReference Include="NativeShellKit.WinUI" Version="0.1.0-alpha.1" />
     <PackageReference Include="NativeShellKit.DesignSystem" Version="0.1.0-alpha.1" />
     <PackageReference Include="NativeShellKit.Diagnostics" Version="0.1.0-alpha.1" />
