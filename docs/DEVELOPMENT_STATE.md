@@ -5,7 +5,7 @@
 - **Windows App SDK Baseline:** `2.6.4`
 - **Current Branch:** `main`
 - **Remote Repository:** `https://github.com/trungduc22/NativeShellKit`
-- **Latest Verified Commit:** `9270e815099e3c4ed2188b90ebe8d6bd527bb527` (updated immediately after M6 push)
+- **Latest Verified Commit:** `efd05f9b474668985d79310333882fb1787707ec` (M6 pushed; M7 packaged & staged for push)
 
 ## Available Toolchains
 
@@ -24,7 +24,7 @@
 - [x] **M4**: Add Windows integration and tray (`b1bf4ed9470e6b8e4b9a0c8e27b0dbbc7889c829`)
 - [x] **M5**: Implement unified notification services (`9270e815099e3c4ed2188b90ebe8d6bd527bb527`)
 - [x] **M6**: Add versioned module and IPC contracts (`NativeShellKit.Security`, `NativeShellKit.Communication`, `NativeShellKit.Diagnostics`)
-- [ ] **M7**: Package NativeShellKit NuGet libraries
+- [x] **M7**: Package NativeShellKit NuGet libraries (`NativeShellKit.Build`, `packaging/Pack-NuGet.ps1`, 11 `.nupkg`s `0.1.0-alpha.1` with `.xbf`/`.pri` + `SHA256SUMS.txt` + `feed-manifest.json`)
 - [ ] **M8**: Add app templates and developer tooling
 - [ ] **M9**: Build Developer Kit installer and samples
 - [ ] **M10**: Verify complete SDK and document migrations

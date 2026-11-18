@@ -11,7 +11,19 @@
     <PackageId>NativeShellKit.DesignSystem</PackageId>
     <Description>Fluent design tokens, Light/Dark resource dictionaries, typography, and reusable accessible WinUI 3 controls for NativeShellKit.</Description>
     <IsPackable>true</IsPackable>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeWinUiXbfInPack</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
+
+  <Target Name="IncludeWinUiXbfInPack">
+    <PropertyGroup>
+      <_NuGetShortTfm>$([System.Text.RegularExpressions.Regex]::Replace('$(TargetFramework)', '\.0$', ''))</_NuGetShortTfm>
+    </PropertyGroup>
+    <ItemGroup>
+      <_WinUiXbfFiles Include="$(OutDir)$(AssemblyName)\**\*.xbf" />
+      <TfmSpecificPackageFile Include="@(_WinUiXbfFiles)"
+                              PackagePath="lib\$(_NuGetShortTfm)\$(AssemblyName)\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
