@@ -5,7 +5,7 @@
 - **Windows App SDK Baseline:** `2.6.4`
 - **Current Branch:** `main`
 - **Remote Repository:** `https://github.com/trungduc22/NativeShellKit`
-- **Latest Verified Commit:** `b3b7ecaacbd49da811aa9961388b13d2dbebb4e4` (updated immediately after M3 push)
+- **Latest Verified Commit:** `1bed76ed1958e0b0e98293a2db2a9c9a9efa61f4` (updated immediately after M4 push)
 
 ## Available Toolchains
 
@@ -20,8 +20,8 @@
 - [x] **M0**: Initialize repository and architecture (`9f1dfb4b7c5494915b3eb2063eff52ab3d3e8c55`)
 - [x] **M1**: Add application abstractions and hosting (`3a4b25825a1b9e63a06dcf6f27637eeb9ef4e8fc`)
 - [x] **M2**: Implement native WinUI shell (`b3b7ecaacbd49da811aa9961388b13d2dbebb4e4`)
-- [x] **M3**: Implement shared design system (`NativeShellKit.DesignSystem`)
-- [ ] **M4**: Add Windows integration and tray
+- [x] **M3**: Implement shared design system (`1bed76ed1958e0b0e98293a2db2a9c9a9efa61f4`)
+- [x] **M4**: Add Windows integration and tray (`NativeShellKit.Windows`, `NativeShellKit.Tray`)
 - [ ] **M5**: Implement unified notification services
 - [ ] **M6**: Add versioned module and IPC contracts
 - [ ] **M7**: Package NativeShellKit NuGet libraries
@@ -41,4 +41,4 @@
 
 ## Next Concrete Task
 
-Finish M4 (`NativeShellKit.Windows` and `NativeShellKit.Tray`).
+Restore, build, and push M5 (`NativeShellKit.Notifications`), then implement M6 (`Security`, `Communication`, `Diagnostics`).
