@@ -5,7 +5,7 @@
 - **Windows App SDK Baseline:** `2.6.4`
 - **Current Branch:** `main`
 - **Remote Repository:** `https://github.com/trungduc22/NativeShellKit`
-- **Latest Verified Commit:** `ca907ea51f6067a0c877af63653aa2bc2addfe61` (M7 pushed; M8 verified & staged for push)
+- **Latest Verified Commit:** `32d9e91661cac208660d908fc11da99ead729eae` (M8 pushed; M9 samples & Developer Kit verified & staged for push)
 
 ## Available Toolchains
 
@@ -26,19 +26,19 @@
 - [x] **M6**: Add versioned module and IPC contracts (`NativeShellKit.Security`, `NativeShellKit.Communication`, `NativeShellKit.Diagnostics`)
 - [x] **M7**: Package NativeShellKit NuGet libraries (`NativeShellKit.Build`, `packaging/Pack-NuGet.ps1`, 11 `.nupkg`s `0.1.0-alpha.1` with `.xbf`/`.pri` + `SHA256SUMS.txt` + `feed-manifest.json`)
 - [x] **M8**: Add app templates and developer tooling (`NativeShellKit.Templates`, `NativeShellKit.DevTools` / `nsk` CLI, `buildTransitive` `.xbf` consumer deployment)
-- [ ] **M9**: Build Developer Kit installer and samples
+- [x] **M9**: Build Developer Kit installer and samples (`MinimalNativeApp`, `BackgroundCompanionApp`, `UnifiedHostDemo`, `NativeShellKit-DeveloperKit-Setup-x64.exe`, `DeveloperKit.iss`, `Build-DeveloperKit.ps1`)
 - [ ] **M10**: Verify complete SDK and document migrations
 
 ## Build & Test Commands
 
-- Restore: `dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="C:\Users\Duc\Documents\Codex\2026-11-04\files-pasted-by-the-user-master\work\nuget"`
+- Restore: `dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="artifacts\packages%3B<offline-nuget-source>"`
 - Build: `dotnet build NativeShellKit.sln -c Release -p:Platform=x64 --no-restore`
 - Test: `(available in M10)`
 
 ## Known Limitations
 
-- `ISCC.exe` (Inno Setup compiler) is absent on this workstation; `DeveloperKit.iss` is generated and validated syntactically, while `NativeShellKit-DeveloperKit-Setup-x64.exe` provides an executable self-contained per-user installer/upgrader/uninstaller.
+- `ISCC.exe` (Inno Setup compiler) is absent on this workstation; `DeveloperKit.iss` is shipped alongside `NativeShellKit-DeveloperKit-Setup-x64.exe` and `Build-DeveloperKit.ps1`, which invokes `ISCC.exe` automatically when installed.
 
 ## Next Concrete Task
 
-Add `NativeShellKit.Build` to `NativeShellKit.sln`, run `packaging/Pack-NuGet.ps1`, validate generated `.nupkg` archives, and push M7.
+Implement `tests/NativeShellKit.Tests`, migration guides, versioning policy, and CI workflow (M10), run full verification, and push final commit.

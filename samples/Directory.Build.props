@@ -1,0 +1,10 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"
+          Condition="Exists($([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../')))" />
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <IsPackable>false</IsPackable>
+    <RestoreAdditionalProjectSources Condition="Exists('$(MSBuildThisFileDirectory)..\artifacts\packages')">$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)..\artifacts\packages</RestoreAdditionalProjectSources>
+    <RestoreAdditionalProjectSources Condition="Exists('$(MSBuildThisFileDirectory)..\packages')">$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)..\packages</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+</Project>
