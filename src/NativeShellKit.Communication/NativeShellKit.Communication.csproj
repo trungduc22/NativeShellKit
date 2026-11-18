@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Platforms>x64;AnyCPU</Platforms>
+    <PackageId>NativeShellKit.Communication</PackageId>
+    <Description>Typed in-process event bus and authenticated, protocol-versioned Named Pipe IPC for NativeShellKit.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NativeShellKit.Abstractions\NativeShellKit.Abstractions.csproj" />
+    <ProjectReference Include="..\NativeShellKit.Security\NativeShellKit.Security.csproj" />
+  </ItemGroup>
+</Project>

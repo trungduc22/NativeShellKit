@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Platforms>x64;AnyCPU</Platforms>
+    <PackageId>NativeShellKit.Diagnostics</PackageId>
+    <Description>Secret-redacting file logger, startup timing tracker, runtime metrics collector, UI self-test runner, and screenshot capture for NativeShellKit.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="$(SystemDrawingCommonPackageVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NativeShellKit.Abstractions\NativeShellKit.Abstractions.csproj" />
+    <ProjectReference Include="..\NativeShellKit.Security\NativeShellKit.Security.csproj" />
+  </ItemGroup>
+</Project>
