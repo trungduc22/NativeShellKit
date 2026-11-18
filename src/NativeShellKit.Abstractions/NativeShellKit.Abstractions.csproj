@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Platforms>x64;AnyCPU</Platforms>
+    <PackageId>NativeShellKit.Abstractions</PackageId>
+    <Description>Canonical contracts for NativeShellKit application identity, lifecycle, modules, notifications, navigation, settings, diagnostics, and IPC.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+</Project>
