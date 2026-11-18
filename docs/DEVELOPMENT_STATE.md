@@ -5,7 +5,7 @@
 - **Windows App SDK Baseline:** `2.6.4`
 - **Current Branch:** `main`
 - **Remote Repository:** `https://github.com/trungduc22/NativeShellKit`
-- **Latest Verified Commit:** `9f1dfb4b7c5494915b3eb2063eff52ab3d3e8c55` (updated immediately after M1 push)
+- **Latest Verified Commit:** `3a4b25825a1b9e63a06dcf6f27637eeb9ef4e8fc` (updated immediately after M2 push)
 
 ## Available Toolchains
 
@@ -18,8 +18,8 @@
 ## Milestone Checklist
 
 - [x] **M0**: Initialize repository and architecture (`9f1dfb4b7c5494915b3eb2063eff52ab3d3e8c55`)
-- [x] **M1**: Add application abstractions and hosting (`NativeShellKit.Abstractions`, `NativeShellKit.Hosting`)
-- [ ] **M2**: Implement native WinUI shell
+- [x] **M1**: Add application abstractions and hosting (`3a4b25825a1b9e63a06dcf6f27637eeb9ef4e8fc`)
+- [x] **M2**: Implement native WinUI shell (`NativeShellKit.WinUI`)
 - [ ] **M3**: Implement shared design system
 - [ ] **M4**: Add Windows integration and tray
 - [ ] **M5**: Implement unified notification services
@@ -32,7 +32,7 @@
 ## Build & Test Commands
 
 - Restore: `dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="C:\Users\Duc\Documents\Codex\2026-11-04\files-pasted-by-the-user-master\work\nuget"`
-- Build: `dotnet build NativeShellKit.sln -c Release --no-restore`
+- Build: `dotnet build NativeShellKit.sln -c Release -p:Platform=x64 --no-restore`
 - Test: `(available in M10)`
 
 ## Known Limitations
@@ -41,4 +41,4 @@
 
 ## Next Concrete Task
 
-Implement M2 (`NativeShellKit.WinUI` — MVVM primitives, WinUI shell view, custom title bar, navigation service, theme/Mica/Acrylic service, dialog coordinator, UI dispatcher helpers).
+Implement M3 (`NativeShellKit.DesignSystem` — Fluent design tokens, Light/Dark resource dictionaries, accessible controls).
