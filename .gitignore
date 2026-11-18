@@ -1,0 +1,49 @@
+# Build artifacts
+bin/
+obj/
+artifacts/
+TestResults/
+out/
+publish/
+
+# IDE & user-specific files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# Sensitive files & local state (MUST NEVER BE COMMITTED)
+*.dpapi
+*.token
+*.key
+*.pem
+*.pfx
+*.p12
+*.snk
+*.cer
+*.crt
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*secrets*.json
+*credentials*.json
+*pairing.generated.json
+
+# Logs & temporary files
+*.log
+*.tmp
+*.bak
+*.cache
+_temp/
+tmp/
+.nuget/
+packages/
+*.nupkg
+*.snupkg
+!templates/**/packages.lock.json

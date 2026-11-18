@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <MicrosoftWindowsAppSDKVersion>2.6.4</MicrosoftWindowsAppSDKVersion>
+    <ProtectedDataPackageVersion>10.0.0</ProtectedDataPackageVersion>
+    <SystemEventsPackageVersion>10.0.0</SystemEventsPackageVersion>
+    <SystemDrawingCommonPackageVersion>10.0.0</SystemDrawingCommonPackageVersion>
+  </PropertyGroup>
+</Project>
