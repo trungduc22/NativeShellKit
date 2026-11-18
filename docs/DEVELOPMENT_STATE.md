@@ -5,7 +5,7 @@
 - **Windows App SDK Baseline:** `2.6.4`
 - **Current Branch:** `main`
 - **Remote Repository:** `https://github.com/trungduc22/NativeShellKit`
-- **Latest Verified Commit:** `3a4b25825a1b9e63a06dcf6f27637eeb9ef4e8fc` (updated immediately after M2 push)
+- **Latest Verified Commit:** `b3b7ecaacbd49da811aa9961388b13d2dbebb4e4` (updated immediately after M3 push)
 
 ## Available Toolchains
 
@@ -19,8 +19,8 @@
 
 - [x] **M0**: Initialize repository and architecture (`9f1dfb4b7c5494915b3eb2063eff52ab3d3e8c55`)
 - [x] **M1**: Add application abstractions and hosting (`3a4b25825a1b9e63a06dcf6f27637eeb9ef4e8fc`)
-- [x] **M2**: Implement native WinUI shell (`NativeShellKit.WinUI`)
-- [ ] **M3**: Implement shared design system
+- [x] **M2**: Implement native WinUI shell (`b3b7ecaacbd49da811aa9961388b13d2dbebb4e4`)
+- [x] **M3**: Implement shared design system (`NativeShellKit.DesignSystem`)
 - [ ] **M4**: Add Windows integration and tray
 - [ ] **M5**: Implement unified notification services
 - [ ] **M6**: Add versioned module and IPC contracts
@@ -41,4 +41,4 @@
 
 ## Next Concrete Task
 
-Implement M3 (`NativeShellKit.DesignSystem` — Fluent design tokens, Light/Dark resource dictionaries, accessible controls).
+Finish M4 (`NativeShellKit.Windows` and `NativeShellKit.Tray`).

@@ -1,0 +1,53 @@
+<ResourceDictionary
+    x:Class="NativeShellKit.DesignSystem.Themes.DesignSystemThemeResources"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="NativeShellCardBackgroundBrush" Color="#EBFFFFFF" />
+            <SolidColorBrush x:Key="NativeShellCardBorderBrush" Color="#330F172A" />
+            <SolidColorBrush x:Key="NativeShellSubtleSurfaceBrush" Color="#140F172A" />
+            <SolidColorBrush x:Key="NativeShellMutedTextBrush" Color="#FF475569" />
+            <SolidColorBrush x:Key="NativeShellSuccessBgBrush" Color="#1E059669" />
+            <SolidColorBrush x:Key="NativeShellSuccessFgBrush" Color="#FF047857" />
+            <SolidColorBrush x:Key="NativeShellWarningBgBrush" Color="#1ED97706" />
+            <SolidColorBrush x:Key="NativeShellWarningFgBrush" Color="#FFB45309" />
+            <SolidColorBrush x:Key="NativeShellDangerBgBrush" Color="#1EDC2626" />
+            <SolidColorBrush x:Key="NativeShellDangerFgBrush" Color="#FFDC2626" />
+            <SolidColorBrush x:Key="NativeShellInfoBgBrush" Color="#1E2563EB" />
+            <SolidColorBrush x:Key="NativeShellInfoFgBrush" Color="#FF1D4ED8" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="NativeShellCardBackgroundBrush" Color="#DC1E242E" />
+            <SolidColorBrush x:Key="NativeShellCardBorderBrush" Color="#4494A3B8" />
+            <SolidColorBrush x:Key="NativeShellSubtleSurfaceBrush" Color="#2294A3B8" />
+            <SolidColorBrush x:Key="NativeShellMutedTextBrush" Color="#FF9CA3AF" />
+            <SolidColorBrush x:Key="NativeShellSuccessBgBrush" Color="#2C10B981" />
+            <SolidColorBrush x:Key="NativeShellSuccessFgBrush" Color="#FF34D399" />
+            <SolidColorBrush x:Key="NativeShellWarningBgBrush" Color="#2CF59E0B" />
+            <SolidColorBrush x:Key="NativeShellWarningFgBrush" Color="#FFFBBF24" />
+            <SolidColorBrush x:Key="NativeShellDangerBgBrush" Color="#2CEF4444" />
+            <SolidColorBrush x:Key="NativeShellDangerFgBrush" Color="#FFF87171" />
+            <SolidColorBrush x:Key="NativeShellInfoBgBrush" Color="#2C3B82F6" />
+            <SolidColorBrush x:Key="NativeShellInfoFgBrush" Color="#FF60A5FA" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <Style x:Key="NativeShellCardBorderStyle" TargetType="Border">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="Background" Value="{ThemeResource NativeShellCardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource NativeShellCardBorderBrush}" />
+    </Style>
+
+    <Style x:Key="NativeShellPageTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NativeShellSectionTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+</ResourceDictionary>

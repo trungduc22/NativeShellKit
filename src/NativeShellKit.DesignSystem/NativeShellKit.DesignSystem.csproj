@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Platforms>x64;AnyCPU</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <GenerateLibraryLayout>true</GenerateLibraryLayout>
+    <PackageId>NativeShellKit.DesignSystem</PackageId>
+    <Description>Fluent design tokens, Light/Dark resource dictionaries, typography, and reusable accessible WinUI 3 controls for NativeShellKit.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NativeShellKit.Abstractions\NativeShellKit.Abstractions.csproj" />
+    <ProjectReference Include="..\NativeShellKit.WinUI\NativeShellKit.WinUI.csproj" />
+  </ItemGroup>
+</Project>
