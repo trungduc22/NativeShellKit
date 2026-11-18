@@ -28,8 +28,10 @@ $projects = @(
     "src\NativeShellKit.Security\NativeShellKit.Security.csproj",
     "src\NativeShellKit.Communication\NativeShellKit.Communication.csproj",
     "src\NativeShellKit.Diagnostics\NativeShellKit.Diagnostics.csproj",
-    "src\NativeShellKit.Build\NativeShellKit.Build.csproj"
+    "src\NativeShellKit.Build\NativeShellKit.Build.csproj",
+    "tools\NativeShellKit.DevTools\NativeShellKit.DevTools.csproj"
 )
+$templateProject = "templates\NativeShellKit.Templates\NativeShellKit.Templates.csproj"
 
 Write-Host "[1/3] Restoring and building solution ($Configuration|$Platform)..."
 $restoreArgs = @("restore", (Join-Path $repoRoot "NativeShellKit.sln"))
@@ -39,21 +41,27 @@ if (-not [string]::IsNullOrWhiteSpace($AdditionalNuGetSource)) {
 & dotnet @restoreArgs
 if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed ($LASTEXITCODE)." }
 
+& dotnet restore (Join-Path $repoRoot $templateProject)
+if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for $templateProject ($LASTEXITCODE)." }
+
 & dotnet build (Join-Path $repoRoot "NativeShellKit.sln") -c $Configuration -p:Platform=$Platform -p:Version=$Version --no-restore
 if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)." }
 
-Write-Host "[2/3] Packing NativeShellKit NuGet libraries ($Version)..."
+Write-Host "[2/3] Packing NativeShellKit NuGet libraries and templates ($Version)..."
 foreach ($relProj in $projects) {
     $projPath = Join-Path $repoRoot $relProj
     & dotnet pack $projPath -c $Configuration -p:Platform=$Platform -p:Version=$Version --no-build -o $OutputDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed for $relProj ($LASTEXITCODE)." }
 }
+& dotnet pack (Join-Path $repoRoot $templateProject) -c $Configuration -p:Version=$Version --no-restore -o $OutputDir
+if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed for $templateProject ($LASTEXITCODE)." }
 
 Write-Host "[3/3] Validating generated .nupkg packages and writing SHA256SUMS.txt..."
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $packages = Get-ChildItem -Path $OutputDir -Filter "NativeShellKit.*.nupkg" | Sort-Object Name
-if ($packages.Count -lt $projects.Count) {
-    throw "Expected at least $($projects.Count) packages in '$OutputDir', found $($packages.Count)."
+$expectedCount = $projects.Count + 1
+if ($packages.Count -lt $expectedCount) {
+    throw "Expected at least $expectedCount packages in '$OutputDir', found $($packages.Count)."
 }
 
 $manifestItems = @()
@@ -63,9 +71,17 @@ foreach ($pkg in $packages) {
     try {
         $entries = $zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') }
         $hasNuspec = ($entries | Where-Object { $_ -like "*.nuspec" }).Count -gt 0
-        $hasDll = ($entries | Where-Object { $_ -like "lib/*.dll" }).Count -gt 0
-        if (-not $hasNuspec -or -not $hasDll) {
-            throw "Invalid NuGet archive '$($pkg.Name)': nuspec=$hasNuspec, dll=$hasDll"
+        if ($pkg.Name -like "NativeShellKit.Templates.*") {
+            $hasTemplateJson = ($entries | Where-Object { $_ -like "content/*template.json" }).Count -gt 0
+            if (-not $hasNuspec -or -not $hasTemplateJson) {
+                throw "Invalid Template NuGet archive '$($pkg.Name)': nuspec=$hasNuspec, templateJson=$hasTemplateJson"
+            }
+        }
+        else {
+            $hasDll = ($entries | Where-Object { $_ -like "lib/*.dll" }).Count -gt 0
+            if (-not $hasNuspec -or -not $hasDll) {
+                throw "Invalid NuGet archive '$($pkg.Name)': nuspec=$hasNuspec, dll=$hasDll"
+            }
         }
         if ($pkg.Name -like "NativeShellKit.WinUI.*" -or $pkg.Name -like "NativeShellKit.DesignSystem.*") {
             $hasPri = ($entries | Where-Object { $_ -like "*.pri" }).Count -gt 0

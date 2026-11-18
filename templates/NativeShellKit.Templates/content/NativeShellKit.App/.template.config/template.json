@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "trungduc22",
+  "classifications": [
+    "Windows",
+    "WinUI",
+    "Desktop",
+    "NativeShellKit"
+  ],
+  "identity": "NativeShellKit.App.Template.CSharp",
+  "name": "NativeShellKit WinUI 3 Application",
+  "shortName": "nativeshellkit",
+  "description": "Native WinUI 3 desktop application powered by NativeShellKit packages.",
+  "sourceName": "NativeShellKitApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "symbols": {
+    "EnableTray": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include NativeShellKit.Tray system tray and close-to-tray integration."
+    },
+    "EnableStartup": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include Windows auto-start registration via NativeShellKit.Windows."
+    },
+    "EnableNotifications": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include NativeShellKit.Notifications native and in-app notification services."
+    },
+    "EnableNavigation": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include multi-route NavigationView shell navigation."
+    },
+    "EnableLocalization": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include localized UI string resources."
+    },
+    "EnableDiagnostics": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include NativeShellKit.Diagnostics logging, metrics, and UI self-test runner."
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "NativeShellKitApp.csproj"
+    }
+  ]
+}

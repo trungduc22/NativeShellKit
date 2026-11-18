@@ -1,0 +1,15 @@
+<Project>
+  <Target Name="_CopyNativeShellKitWinUiXbf" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_NskWinUiXbf Include="$(MSBuildThisFileDirectory)..\lib\net10.0-windows10.0.19041\NativeShellKit.WinUI\**\*.xbf" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_NskWinUiXbf)"
+          DestinationFiles="@(_NskWinUiXbf->'$(OutDir)NativeShellKit.WinUI\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_NskWinUiXbf)' != '' and '$(OutDir)' != ''" />
+    <Copy SourceFiles="@(_NskWinUiXbf)"
+          DestinationFiles="@(_NskWinUiXbf->'$(PublishDir)NativeShellKit.WinUI\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_NskWinUiXbf)' != '' and '$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+  </Target>
+</Project>

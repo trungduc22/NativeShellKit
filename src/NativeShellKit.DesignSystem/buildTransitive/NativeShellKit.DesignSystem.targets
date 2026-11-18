@@ -1,0 +1,15 @@
+<Project>
+  <Target Name="_CopyNativeShellKitDesignSystemXbf" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_NskDesignSystemXbf Include="$(MSBuildThisFileDirectory)..\lib\net10.0-windows10.0.19041\NativeShellKit.DesignSystem\**\*.xbf" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_NskDesignSystemXbf)"
+          DestinationFiles="@(_NskDesignSystemXbf->'$(OutDir)NativeShellKit.DesignSystem\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_NskDesignSystemXbf)' != '' and '$(OutDir)' != ''" />
+    <Copy SourceFiles="@(_NskDesignSystemXbf)"
+          DestinationFiles="@(_NskDesignSystemXbf->'$(PublishDir)NativeShellKit.DesignSystem\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_NskDesignSystemXbf)' != '' and '$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+  </Target>
+</Project>

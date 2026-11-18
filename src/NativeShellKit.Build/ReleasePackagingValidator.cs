@@ -17,7 +17,10 @@ public static class ReleasePackagingValidator
     private static readonly string[] ForbiddenExtensions = [".dpapi", ".db", ".db-wal", ".db-shm", ".pfx", ".snk", ".key", ".pem"];
     private static readonly string[] ForbiddenNames = ["pairing.generated.json", "secrets.json", "credentials.json"];
 
-    public static PackageValidationResult ValidatePackageArchive(string nupkgPath, bool expectWinUiResources = false)
+    public static PackageValidationResult ValidatePackageArchive(
+        string nupkgPath,
+        bool expectWinUiResources = false,
+        bool expectTemplatePackage = false)
     {
         if (string.IsNullOrWhiteSpace(nupkgPath) || !File.Exists(nupkgPath))
             return new PackageValidationResult(nupkgPath, false, false, false, false, "Package file not found.");
@@ -33,6 +36,16 @@ public static class ReleasePackagingValidator
             bool hasPri = entries.Any(e => e.EndsWith(".pri", StringComparison.OrdinalIgnoreCase));
             bool hasXbf = entries.Any(e => e.EndsWith(".xbf", StringComparison.OrdinalIgnoreCase));
             bool hasWinUiResources = !expectWinUiResources || (hasPri && hasXbf);
+
+            if (expectTemplatePackage)
+            {
+                bool hasTemplateConfig = entries.Any(e =>
+                    e.StartsWith("content/", StringComparison.OrdinalIgnoreCase) &&
+                    e.EndsWith("template.json", StringComparison.OrdinalIgnoreCase));
+                bool tplOk = hasNuspec && hasTemplateConfig;
+                string tplErr = tplOk ? string.Empty : $"Missing template archive contents (nuspec={hasNuspec}, templateJson={hasTemplateConfig}).";
+                return new PackageValidationResult(nupkgPath, tplOk, hasNuspec, hasTemplateConfig, true, tplErr);
+            }
 
             bool ok = hasNuspec && hasDll && hasWinUiResources;
             string err = ok

@@ -26,6 +26,11 @@
   </Target>
 
   <ItemGroup>
+    <None Include="buildTransitive\NativeShellKit.DesignSystem.targets" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="buildTransitive\NativeShellKit.DesignSystem.targets" Pack="true" PackagePath="build\" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
   </ItemGroup>
 
