@@ -57,3 +57,6 @@ M12 package preparation is tracked in [M12 state](migrations/M12_STATE.md). This
 ## Next Concrete Task
 
 Monitor GitHub Actions CI run for M11 on `https://github.com/trungduc22/NativeShellKit/actions` and maintain pre-release (`0.1.0-alpha.1`) hardening.
+# Local ecosystem peer grants
+
+`LocalPeerGrant` adds an explicit per-peer DPAPI credential, independent of each app's default IPC key. Its versioned identity determines the credential location and Windows pipe name. Granting and revoking are application-owned user actions. A server must stop its existing listener before rotating or revoking a grant. The dedicated peer mode applies same-user/elevation restrictions, bounded frames and request time, single-attempt calls, an operation allowlist, and signed responses correlated to requests. Existing per-app IPC defaults are preserved.

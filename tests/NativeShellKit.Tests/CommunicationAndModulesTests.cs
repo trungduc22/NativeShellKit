@@ -112,6 +112,31 @@ public sealed class CommunicationAndModulesTests
     }
 
     [Fact]
+    public async Task LocalPeerGrant_AuthenticatesAndCorrelates_ThenRevokesAndRotates()
+    {
+        using var tmp = new TempRootScope("nsk-peer");
+        var identity = new AppIdentity($"peer-{Guid.NewGuid():N}", "Peer Test", baseDataRoot: tmp.RootPath);
+        var grant = new LocalPeerGrant(identity);
+        Assert.Null(await grant.OpenClientAsync());
+        await grant.GrantAsync();
+        await using var originalClient = Assert.IsType<NamedPipeIpcClient>(await grant.OpenClientAsync());
+        await using var first = Assert.IsType<NamedPipeIpcServer>(await grant.OpenServerAsync());
+        first.RegisterAllowedHandler("status", (request, _) => Task.FromResult(request with { Operation = "ok" }));
+        await first.StartAsync();
+        Assert.Equal("ok", (await originalClient.SendAsync("status")).Operation);
+        Assert.Contains("FORBIDDEN", (await originalClient.SendAsync("unlisted")).PayloadJson);
+        await first.StopAsync();
+        await grant.RevokeAsync();
+        Assert.Null(await grant.OpenServerAsync());
+        Assert.Null(await grant.OpenClientAsync());
+
+        await grant.GrantAsync();
+        await using var second = Assert.IsType<NamedPipeIpcServer>(await grant.OpenServerAsync());
+        await second.StartAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => originalClient.SendAsync("status"));
+    }
+
+    [Fact]
     public async Task ModularHost_InitializesAndStopsTwoModules_WithBusDecoupling()
     {
         using var tmp = new TempRootScope();
