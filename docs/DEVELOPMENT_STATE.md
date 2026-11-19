@@ -54,9 +54,22 @@ M12 package preparation is tracked in [M12 state](migrations/M12_STATE.md). This
   - Desktop system tray (`Shell_TrayWnd`) taskbar icon placement returned `Win32Error=0x80004005` (`HasTaskbarShell = false`) inside the isolated agent desktop (`exebox-*`); tray menu callbacks, `HideToTray`/`ShowFromTray` events, and `IWin32Interop` calls are verified via unit tests and interactive acceptance without a live Explorer taskbar window.
   - OS toast visual banner popup appearance (`VisualDisplayConfirmed = false`) cannot be observed programmatically after `AppNotificationManager.Default.Show(...)`.
 
-## Next Concrete Task
+## Architecture 2.0 Planning Milestone (`docs/architecture-2.0`)
 
-Monitor GitHub Actions CI run for M11 on `https://github.com/trungduc22/NativeShellKit/actions` and maintain pre-release (`0.1.0-alpha.1`) hardening.
-# Local ecosystem peer grants
+- [x] **M12.5 / Architecture 2.0 Blueprint**: Audited all 5 repositories (`NativeShellKit`, `HiberDesk`, `GhostCode`, `BackThread`, read-only `ed-local-ai`) and authored 7 implementation-ready design documents:
+  - `docs/architecture/PLATFORM_2_0.md` (Canonical MEDI-backed host, `IShellModule` v2, 3-plane IPC, performance budgets)
+  - `docs/architecture/BRANCH_CONVERGENCE.md` (Exact multi-repo branch/commit/CI matrix & selective convergence playbook)
+  - `docs/architecture/DEPENDENCY_GRAPH.md` (13-package coherence, `net10.0` multi-targeting, `0.2.0-alpha.1` NuGet-only rules)
+  - `docs/design/UI_UX_2_0.md` (Fluent 2 tokens `Light`/`Dark`/`HighContrast`, unified 5-variant `NativeShellFrame`)
+  - `docs/design/COMPONENT_SPECIFICATIONS.md` (100% DP-backed templated controls, `CompactMediaBar`, `ModuleCardBoundary`)
+  - `docs/migration/ECOSYSTEM_ROADMAP.md` (HiberDesk, GhostCode, BackThread isolation, deferred ED-Local-AI plan, M13–M19)
+  - `docs/architecture/ARCHITECTURE_DECISIONS.md` (ADR-001 through ADR-012)
+
+## Local Ecosystem Peer Grants (`feature/ecosystem-integration-contracts`)
 
 `LocalPeerGrant` adds an explicit per-peer DPAPI credential, independent of each app's default IPC key. Its versioned identity determines the credential location and Windows pipe name. Granting and revoking are application-owned user actions. A server must stop its existing listener before rotating or revoking a grant. The dedicated peer mode applies same-user/elevation restrictions, bounded frames and request time, single-attempt calls, an operation allowlist, and signed responses correlated to requests. Existing per-app IPC defaults are preserved.
+
+## Next Concrete Task
+
+Execute **Milestone M13** on `convergence/sdk-2.0`: implement the MEDI-backed canonical `NativeShellHost`, multi-target `Abstractions`/`Hosting` to `net10.0;net10.0-windows10.0.19041.0`, add `ITrayService`/`IUiDispatcher`/`LegacyIdentityOverrides`/nonce replay cache, fix `buildTransitive` publish targets and single-source versioning, and verify immutable **`0.2.0-alpha.1`** packages in CI.
+
