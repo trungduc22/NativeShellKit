@@ -133,6 +133,22 @@ public enum DialogOutcome
 public interface IDialogService
 {
     Task<DialogOutcome> ShowMessageAsync(DialogRequest request, CancellationToken ct = default);
+
+    Task<DialogOutcome> ShowDestructiveConfirmAsync(DestructiveDialogRequest request, CancellationToken ct = default)
+        => ShowMessageAsync(new DialogRequest(
+            request.Title,
+            request.Message,
+            request.ConfirmButtonText,
+            CloseButtonText: request.CancelButtonText)
+        {
+            DefaultButton = DialogDefaultButton.Close
+        }, ct);
+
+    Task ShowProgressAsync(
+        ProgressDialogRequest request,
+        Func<IProgress<DialogProgressUpdate>, CancellationToken, Task> work,
+        CancellationToken ct = default)
+        => work(new Progress<DialogProgressUpdate>(), ct);
 }
 
 public interface IShellWindowService

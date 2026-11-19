@@ -226,7 +226,7 @@ public sealed partial class MainWindow : Window
         return new ModuleViewPage(this, BuildSessionsContent());
     }
 
-    private object BuildSessionsContent()
+    private UIElement BuildSessionsContent()
     {
         var state = _host.Services.GetRequiredService<WorkspaceSessionState>();
         var stack = new StackPanel { Spacing = 14 };
