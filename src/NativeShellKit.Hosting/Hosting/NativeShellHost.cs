@@ -53,7 +53,7 @@ public sealed class NativeShellHost : IAppHost
         Identity.EnsureDirectoriesExist();
         AttachGlobalExceptionHandlers();
 
-        var hooks = _provider.GetServices<ILifecycleHook>()
+        var hooks = ServiceProviderServiceExtensions.GetServices<ILifecycleHook>(_provider)
             .OrderBy(h => h.Order)
             .ToArray();
 
@@ -137,7 +137,7 @@ public sealed class NativeShellHost : IAppHost
             }
         }
 
-        var hooks = _provider.GetServices<ILifecycleHook>()
+        var hooks = ServiceProviderServiceExtensions.GetServices<ILifecycleHook>(_provider)
             .OrderByDescending(h => h.Order)
             .ToArray();
 

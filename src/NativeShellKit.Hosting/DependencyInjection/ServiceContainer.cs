@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using NativeShellKit.Abstractions.DependencyInjection;
 
@@ -44,7 +45,7 @@ public sealed class ServiceContainer :
 
         _services.AddSingleton<IServiceRegistry>(this);
         _services.AddSingleton<IShellServiceScopeFactory>(sp =>
-            new MediShellServiceScopeFactory(sp.GetRequiredService<IServiceScopeFactory>()));
+            new MediShellServiceScopeFactory(ServiceProviderServiceExtensions.GetRequiredService<IServiceScopeFactory>(sp)));
         _descriptorVersion = 1;
     }
 
@@ -101,7 +102,7 @@ public sealed class ServiceContainer :
         {
             ThrowIfDisposed();
             _descriptors.Add(descriptor);
-            _services.Add(msDescriptor);
+            ((ICollection<ServiceDescriptor>)_services).Add(msDescriptor);
             _descriptorVersion++;
         }
     }
@@ -122,7 +123,7 @@ public sealed class ServiceContainer :
                     ValidateConstructible(descriptor.ImplementationType);
                 }
 
-                _services.Add(descriptor);
+                ((ICollection<ServiceDescriptor>)_services).Add(descriptor);
                 if (!descriptor.IsKeyedService)
                 {
                     _descriptors.Add(new ServiceDescriptorEntry(
@@ -195,7 +196,7 @@ public sealed class ServiceContainer :
     public IShellServiceScope CreateScope()
     {
         var provider = EnsureProvider();
-        return new MediShellServiceScope(provider.GetRequiredService<IServiceScopeFactory>().CreateScope());
+        return new MediShellServiceScope(ServiceProviderServiceExtensions.GetRequiredService<IServiceScopeFactory>(provider).CreateScope());
     }
 
     IServiceScope IServiceScopeFactory.CreateScope() => CreateScope();
@@ -237,7 +238,7 @@ public sealed class ServiceContainer :
                 targetVersion = _descriptorVersion;
                 snapshot = new ServiceCollection();
                 foreach (var item in _services)
-                    snapshot.Add(item);
+                    ((ICollection<ServiceDescriptor>)snapshot).Add(item);
             }
 
             var built = snapshot.BuildServiceProvider(new ServiceProviderOptions

@@ -87,7 +87,7 @@ public sealed class NativeShellHostBuilder
         }
 
         var provider = container.BuildFinalProvider();
-        var supervisor = provider.GetRequiredService<IBackgroundTaskSupervisor>();
+        var supervisor = ServiceProviderServiceExtensions.GetRequiredService<IBackgroundTaskSupervisor>(provider);
         var logger = Abstractions.DependencyInjection.ServiceProviderExtensions.GetService<ISdkLogger>(provider);
         host = new NativeShellHost(_identity, container, provider, moduleCatalog, lifecycleService, supervisor, logger);
         return host;
