@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace NativeShellKit.WinUI.Shell;
 
+[Obsolete("Use ShellTitleBar instead. CustomTitleBarControl will be removed in 0.3.0.")]
 public sealed partial class CustomTitleBarControl : UserControl
 {
     public CustomTitleBarControl()

@@ -19,9 +19,11 @@ public static class WinUiHostExtensions
         {
             services.AddSingleton<WinUiDispatcherService, WinUiDispatcherService>();
             services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<WinUiDispatcherService>());
-            services.AddSingleton<IThemeService, WinUiThemeService>();
+            services.AddSingleton<WinUiThemeService, WinUiThemeService>();
+            services.AddSingleton<IThemeService>(sp => sp.GetRequiredService<WinUiThemeService>());
             services.AddSingleton<INavigationService, WinUiNavigationService>();
-            services.AddSingleton<IDialogService, DialogCoordinator>();
+            services.AddSingleton<DialogCoordinator>(sp => new DialogCoordinator(sp.GetService<IUiDispatcher>()));
+            services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<DialogCoordinator>());
             services.AddSingleton<ShellWindowService>(sp => new ShellWindowService(sp.GetService<IUiDispatcher>()));
             services.AddSingleton<IShellWindowService>(sp => sp.GetRequiredService<ShellWindowService>());
         });

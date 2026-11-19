@@ -7,9 +7,11 @@ using NativeShellKit.Abstractions.Lifecycle;
 using NativeShellKit.Abstractions.Modules;
 using NativeShellKit.Abstractions.Navigation;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Threading;
 using NativeShellKit.DesignSystem.Controls;
 using NativeShellKit.Diagnostics.Verification;
 using NativeShellKit.Windows.SystemServices;
+using NativeShellKit.WinUI.Mvvm;
 using NativeShellKit.WinUI.Shell;
 using NativeShellKit.WinUI.Theming;
 using UnifiedHostDemo.Modules;
@@ -26,11 +28,13 @@ public sealed partial class MainWindow : Window
     private readonly INotificationService _notifications;
     private readonly INativeNotificationPresenter _presenter;
     private readonly IShellWindowService _windowService;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly IDisposable _shellAttachment;
     private readonly string? _interactiveOutputDir;
     private readonly Action<int>? _onAcceptanceComplete;
-    private bool _backdropApplied;
     private bool _acceptanceStarted;
     private int _bannersShownCount;
+    private int _navAwareHits;
 
     public MainWindow(
         IAppHost host,
@@ -48,31 +52,56 @@ public sealed partial class MainWindow : Window
         _notifications = _host.Services.GetRequiredService<INotificationService>();
         _presenter = _host.Services.GetRequiredService<INativeNotificationPresenter>();
         _windowService = _host.Services.GetRequiredService<IShellWindowService>();
+        _dispatcher = _host.Services.GetRequiredService<IUiDispatcher>();
 
-        if (_windowService is ShellWindowService winUiWindow)
-            winUiWindow.AttachWindow(this, ShellView.ShellTitleBar);
-        if (_theme is WinUiThemeService winUiTheme)
-            _backdropApplied = winUiTheme.TryApplyBackdrop(this);
-
-        _notifications.InAppNotificationRaised += (_, record) =>
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                _bannersShownCount++;
-                var banner = new NotificationBannerControl();
-                banner.Show(record);
-                banner.Dismissed += (_, _) => ShellView.SetBannerContent(null);
-                ShellView.SetBannerContent(banner);
-            });
-        };
+        _notifications.InAppNotificationRaised += OnBannerCountIncrement;
 
         RegisterModuleRoutes();
-        ShellView.Initialize(_host.Identity.DisplayName, _navigation, _theme);
+
+        var mediaFooter = new CompactMediaBar
+        {
+            LayoutMode = MediaBarLayout.Strip,
+            Title = "Focus Ambient — Live Workspace Stream",
+            Artist = "Module Transport",
+            ProviderLabel = "Host",
+            RouteLabel = "PC",
+            ConnectionState = ShellStatusKind.Healthy,
+            IsPlaying = true,
+            Margin = new Thickness(16, 0, 16, 12)
+        };
+        mediaFooter.PlayPauseCommand = new RelayCommand(() => mediaFooter.IsPlaying = !mediaFooter.IsPlaying);
+
+        ShellFrame.FooterStripContent = mediaFooter;
+        ShellFrame.TitleBarStatusContent = new StatusBadge
+        {
+            State = ShellStatusKind.Active,
+            Label = $"{_catalog.Modules.Count} Modules"
+        };
+
+        _shellAttachment = ShellFrame.AttachServices(
+            _navigation,
+            _theme,
+            notificationService: _notifications,
+            windowService: _windowService,
+            uiDispatcher: _dispatcher,
+            window: this,
+            appTitle: _host.Identity.DisplayName);
+
+        Closed += (_, _) =>
+        {
+            _notifications.InAppNotificationRaised -= OnBannerCountIncrement;
+            _shellAttachment.Dispose();
+        };
 
         if (!string.IsNullOrWhiteSpace(_interactiveOutputDir))
         {
-            ShellView.Loaded += OnLoadedForAcceptanceAsync;
+            ShellFrame.Loaded += OnLoadedForAcceptanceAsync;
         }
+    }
+
+    private void OnBannerCountIncrement(object? sender, NotificationRecord record)
+    {
+        Interlocked.Increment(ref _bannersShownCount);
     }
 
     private async void OnLoadedForAcceptanceAsync(object sender, RoutedEventArgs e)
@@ -107,7 +136,7 @@ public sealed partial class MainWindow : Window
         double dpiScale = new WindowManagerService().GetDpiScale(hwnd);
         var appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
         appWindow.Resize(new SizeInt32(1140, 760));
-        await Task.Delay(200);
+        await Task.Delay(250);
 
         _theme.ApplyTheme(AppThemeMode.Dark, "#2563EB");
         bool cmdExecuted = await _catalog.ExecuteCommandAsync("sessions.snapshot", _host.Services);
@@ -130,13 +159,14 @@ public sealed partial class MainWindow : Window
         var archiveState = _host.Services.GetRequiredService<ArchiveState>();
 
         bool uiChecks = hwnd != nint.Zero &&
-                        ShellView.ActualWidth > 0 &&
-                        ShellView.ShellTitleBar.ActualWidth > 0 &&
+                        ShellFrame.ActualWidth > 0 &&
+                        ShellFrame.ShellTitleBar.ActualWidth > 0 &&
                         dpiScale > 0 &&
                         cmdExecuted &&
                         sessionState.CompletedSnapshots == 1 &&
                         archiveState.LastIndexedCount == 42 &&
                         _bannersShownCount >= 1 &&
+                        _navAwareHits >= 1 &&
                         activatedOk &&
                         string.Equals(_navigation.CurrentRoute, "archive", StringComparison.OrdinalIgnoreCase) &&
                         cap1 && cap2;
@@ -148,8 +178,9 @@ public sealed partial class MainWindow : Window
             hwnd = $"0x{hwnd:X}",
             dpiScale,
             micaSupported = _theme.IsMicaSupported,
-            backdropApplied = _backdropApplied,
+            effectiveBackdrop = (_theme as WinUiThemeService)?.EffectiveBackdrop.ToString(),
             modulesLoaded = _catalog.Modules.Count,
+            navAwareHits = _navAwareHits,
             completedSnapshots = sessionState.CompletedSnapshots,
             indexedCount = archiveState.LastIndexedCount,
             presenterRegistrationStatus = _presenter.RegistrationStatus.ToString(),
@@ -176,52 +207,135 @@ public sealed partial class MainWindow : Window
             {
                 "sessions" => BuildSessionsPage,
                 "archive" => BuildArchivePage,
-                _ => () => new PageHeaderControl { Title = item.Title, Subtitle = item.ModuleId }
+                _ => () => new PageHeader { Title = item.Title, Subtitle = item.ModuleId }
             };
-            _navigation.RegisterRoute(new NavigationRouteDescriptor(item.Route, item.Title, item.Glyph, viewFactory, item.ModuleId, item.Order, item.IsFooterItem));
+            _navigation.RegisterRoute(new NavigationRouteDescriptor(
+                item.Route,
+                item.Title,
+                item.Glyph,
+                viewFactory,
+                item.ModuleId,
+                item.Order,
+                item.IsFooterItem,
+                NavigationCachePolicy.Cached));
         }
     }
 
     private object BuildSessionsPage()
     {
+        return new ModuleViewPage(this, BuildSessionsContent());
+    }
+
+    private object BuildSessionsContent()
+    {
         var state = _host.Services.GetRequiredService<WorkspaceSessionState>();
-        var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(new PageHeaderControl
+        var stack = new StackPanel { Spacing = 14 };
+        stack.Children.Add(new PageHeader
         {
             Title = "Workspace Session Module",
             Subtitle = "Emits WorkspaceSnapshotRequestedEvent across the in-process event bus",
-            BadgeText = "Module 1"
+            BadgeState = ShellStatusKind.Healthy,
+            BadgeLabel = "Module 1"
         });
-        stack.Children.Add(new CompactMetricCard
+
+        var strip = new MetricStrip { WideColumns = 2, MediumColumns = 2 };
+        strip.Children.Add(new MetricCard
         {
             Label = "Completed Snapshots",
             Value = state.CompletedSnapshots.ToString(),
             Caption = state.LastCompletedWorkspace ?? "None yet",
-            Glyph = "\uE7F4"
+            Glyph = "\uE7F4",
+            TrendState = ShellStatusKind.Healthy
         });
+        strip.Children.Add(new MetricCard
+        {
+            Label = "Module Cache Policy",
+            Value = "Cached",
+            Caption = "INavigationAware enabled",
+            Glyph = "\uE8B7",
+            TrendState = ShellStatusKind.Active
+        });
+        stack.Children.Add(strip);
+
         var trigger = new Button { Content = "Snapshot Workspace" };
         trigger.Click += async (_, _) => await _catalog.ExecuteCommandAsync("sessions.snapshot", _host.Services);
         stack.Children.Add(trigger);
+
+        var boundary = new ModuleCardBoundary
+        {
+            ModuleId = "workspace-session",
+            ModuleTitle = "Workspace Session Health Boundary",
+            HealthState = ModuleHealthState.Healthy,
+            RetryLabel = "Recover",
+            ModuleContent = new CompactMediaBar
+            {
+                LayoutMode = MediaBarLayout.Card,
+                Title = "Workspace Audio Preview",
+                Artist = "Local Session",
+                ProviderLabel = "UnifiedHost",
+                RouteLabel = "Connected",
+                ConnectionState = ShellStatusKind.Healthy,
+                PositionSeconds = 42,
+                DurationSeconds = 180
+            }
+        };
+        stack.Children.Add(boundary);
+
         return new ScrollViewer { Content = stack };
     }
 
     private object BuildArchivePage()
     {
         var state = _host.Services.GetRequiredService<ArchiveState>();
-        var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(new PageHeaderControl
+        var stack = new StackPanel { Spacing = 14 };
+        stack.Children.Add(new PageHeader
         {
             Title = "Code Archive Companion Module",
             Subtitle = "Handles snapshot requests independently and notifies user via INotificationService",
-            BadgeText = "Module 2"
+            BadgeState = ShellStatusKind.Healthy,
+            BadgeLabel = "Module 2"
         });
-        stack.Children.Add(new CompactMetricCard
+        stack.Children.Add(new MetricCard
         {
             Label = "Indexed Items",
             Value = state.LastIndexedCount.ToString(),
             Caption = state.LastWorkspace ?? "Idle",
-            Glyph = "\uE8B7"
+            Glyph = "\uE8B7",
+            TrendState = ShellStatusKind.Healthy
         });
-        return new ScrollViewer { Content = stack };
+
+        var degradedSample = new ModuleCardBoundary
+        {
+            ModuleId = "optional-remote-relay",
+            ModuleTitle = "Optional Peer Relay",
+            HealthState = ModuleHealthState.Degraded,
+            DegradedTitle = "Optional Peer Relay Unavailable",
+            StatusMessage = "Fallback isolated via ModuleCardBoundary without affecting shell navigation.",
+            RetryLabel = "Retry"
+        };
+        degradedSample.RetryCommand = new RelayCommand(() => degradedSample.HealthState = ModuleHealthState.Healthy);
+        stack.Children.Add(degradedSample);
+
+        return new ModuleViewPage(this, new ScrollViewer { Content = stack });
+    }
+
+    private sealed class ModuleViewPage : UserControl, INavigationAware
+    {
+        private readonly MainWindow _owner;
+
+        public ModuleViewPage(MainWindow owner, UIElement content)
+        {
+            _owner = owner;
+            Content = content;
+        }
+
+        public void OnNavigatedTo(object? parameter)
+        {
+            Interlocked.Increment(ref _owner._navAwareHits);
+        }
+
+        public void OnNavigatedFrom()
+        {
+        }
     }
 }

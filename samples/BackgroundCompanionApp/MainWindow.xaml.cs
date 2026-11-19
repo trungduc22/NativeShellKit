@@ -6,6 +6,7 @@ using NativeShellKit.Abstractions.DependencyInjection;
 using NativeShellKit.Abstractions.Lifecycle;
 using NativeShellKit.Abstractions.Navigation;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Threading;
 using NativeShellKit.DesignSystem.Controls;
 using NativeShellKit.Diagnostics.Verification;
 using NativeShellKit.Tray;
@@ -27,9 +28,10 @@ public sealed partial class MainWindow : Window
     private readonly NativeTrayService _tray;
     private readonly WindowsStartupService _startup;
     private readonly IShellWindowService _windowService;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly IDisposable _shellAttachment;
     private readonly string? _interactiveOutputDir;
     private readonly Action<int>? _onAcceptanceComplete;
-    private bool _backdropApplied;
     private bool _acceptanceStarted;
     private int _bannersShownCount;
 
@@ -50,35 +52,50 @@ public sealed partial class MainWindow : Window
         _tray = _host.Services.GetRequiredService<NativeTrayService>();
         _startup = _host.Services.GetRequiredService<WindowsStartupService>();
         _windowService = _host.Services.GetRequiredService<IShellWindowService>();
+        _dispatcher = _host.Services.GetRequiredService<IUiDispatcher>();
 
-        if (_windowService is ShellWindowService winUiWindow)
-            winUiWindow.AttachWindow(this, ShellView.ShellTitleBar);
-        if (_theme is WinUiThemeService winUiTheme)
-            _backdropApplied = winUiTheme.TryApplyBackdrop(this);
-
-        ConfigureTrayMenu(_tray, _notifications, _windowService, () => DispatcherQueue.TryEnqueue(Close), action => DispatcherQueue.TryEnqueue(() => action()));
-        _tray.Initialize(_windowService.WindowHandle);
-        Closed += (_, _) => _tray.Dispose();
-
-        _notifications.InAppNotificationRaised += (_, record) =>
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                _bannersShownCount++;
-                var banner = new NotificationBannerControl();
-                banner.Show(record);
-                banner.Dismissed += (_, _) => ShellView.SetBannerContent(null);
-                ShellView.SetBannerContent(banner);
-            });
-        };
+        _notifications.InAppNotificationRaised += OnBannerCountIncrement;
 
         RegisterRoutes();
-        ShellView.Initialize(_host.Identity.DisplayName, _navigation, _theme);
+
+        _shellAttachment = ShellFrame.AttachServices(
+            _navigation,
+            _theme,
+            notificationService: _notifications,
+            windowService: _windowService,
+            uiDispatcher: _dispatcher,
+            window: this,
+            appTitle: _host.Identity.DisplayName);
+
+        ShellFrame.TitleBarStatusContent = new StatusBadge
+        {
+            State = ShellStatusKind.Healthy,
+            Label = "Tray Ready"
+        };
+
+        ConfigureTrayMenu(
+            _tray,
+            _notifications,
+            _windowService,
+            () => DispatcherQueue.TryEnqueue(Close),
+            action => DispatcherQueue.TryEnqueue(() => action()));
+        _tray.Initialize(_windowService.WindowHandle);
+        Closed += (_, _) =>
+        {
+            _notifications.InAppNotificationRaised -= OnBannerCountIncrement;
+            _shellAttachment.Dispose();
+            _tray.Dispose();
+        };
 
         if (!string.IsNullOrWhiteSpace(_interactiveOutputDir))
         {
-            ShellView.Loaded += OnLoadedForAcceptanceAsync;
+            ShellFrame.Loaded += OnLoadedForAcceptanceAsync;
         }
+    }
+
+    private void OnBannerCountIncrement(object? sender, NotificationRecord record)
+    {
+        Interlocked.Increment(ref _bannersShownCount);
     }
 
     private async void OnLoadedForAcceptanceAsync(object sender, RoutedEventArgs e)
@@ -118,7 +135,7 @@ public sealed partial class MainWindow : Window
 
         _theme.ApplyTheme(AppThemeMode.Dark, "#2563EB");
         _navigation.Navigate("status");
-        await Task.Delay(300);
+        await Task.Delay(350);
         string shot1 = Path.Combine(outputDir, "companion-1-dark-status.png");
         bool cap1 = WindowScreenshotCapture.TryCaptureWindowToPng(hwnd, shot1);
 
@@ -135,7 +152,7 @@ public sealed partial class MainWindow : Window
         _tray.ShowFromTray();
         await Task.Delay(200);
 
-        // Switch to Light theme, publish notification, observe banner & click-to-open activation
+        // Switch to Light theme, publish notification, observe managed NativeShellFrame banner stack & activation
         _theme.ApplyTheme(AppThemeMode.Light, "#2563EB");
         bool handlerActivated = false;
         _notifications.RegisterActionHandler("open", _ =>
@@ -154,15 +171,15 @@ public sealed partial class MainWindow : Window
         await Task.Delay(300);
         string activationArgs = _notifications.BuildActivationArguments(dispatchResult.NotificationId, "open", "notifications");
         bool activatedOk = await _notifications.TryHandleActivationAsync(activationArgs);
-        await Task.Delay(300);
+        await Task.Delay(350);
 
         string shot2 = Path.Combine(outputDir, "companion-2-light-banner-notifications.png");
         bool cap2 = WindowScreenshotCapture.TryCaptureWindowToPng(hwnd, shot2);
 
         bool trayVerifiedOnSession = !_tray.HasTaskbarShell || _tray.IsIconActive;
         bool uiChecks = hwnd != nint.Zero &&
-                        ShellView.ActualWidth > 0 &&
-                        ShellView.ShellTitleBar.ActualWidth > 0 &&
+                        ShellFrame.ActualWidth > 0 &&
+                        ShellFrame.ShellTitleBar.ActualWidth > 0 &&
                         trayVerifiedOnSession &&
                         toggledQuiet &&
                         restoreEventFired &&
@@ -179,7 +196,7 @@ public sealed partial class MainWindow : Window
             hwnd = $"0x{hwnd:X}",
             dpiScale,
             micaSupported = _theme.IsMicaSupported,
-            backdropApplied = _backdropApplied,
+            effectiveBackdrop = (_theme as WinUiThemeService)?.EffectiveBackdrop.ToString(),
             hasTaskbarShell = _tray.HasTaskbarShell,
             trayIconActive = _tray.IsIconActive,
             trayLastError = _tray.LastTrayError,
@@ -246,24 +263,33 @@ public sealed partial class MainWindow : Window
 
     private void RegisterRoutes()
     {
-        _navigation.RegisterRoute(new NavigationRouteDescriptor("status", "Companion", "\uE9D9", BuildStatusPage, Order: 0));
+        _navigation.RegisterRoute(new NavigationRouteDescriptor("status", "Companion", "\uE9D9", BuildStatusPage, Order: 0, CachePolicy: NavigationCachePolicy.Cached));
         _navigation.RegisterRoute(new NavigationRouteDescriptor("notifications", "Notifications", "\uEA8F", BuildNotificationsPage, Order: 1));
     }
 
     private object BuildStatusPage()
     {
-        var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(new PageHeaderControl
+        var stack = new StackPanel { Spacing = 14 };
+        stack.Children.Add(new PageHeader
         {
             Title = _host.Identity.DisplayName,
             Subtitle = "Single-instance tray companion with supervised heartbeat and startup integration",
-            BadgeText = "Background"
+            BadgeState = ShellStatusKind.Active,
+            BadgeLabel = "Background"
         });
 
-        stack.Children.Add(new StatusIndicatorControl
+        stack.Children.Add(new StatusBadge
         {
-            State = _tray.IsIconActive ? ShellIndicatorState.Healthy : ShellIndicatorState.Warning,
-            Label = _tray.IsIconActive ? "System Tray Active" : "Tray Not Initialized"
+            State = _tray.IsIconActive ? ShellStatusKind.Healthy : ShellStatusKind.Warning,
+            Label = _tray.IsIconActive ? "System Tray Active" : "Tray Not Initialized",
+            AnnounceChanges = true
+        });
+
+        stack.Children.Add(new ProgressBanner
+        {
+            Title = "Heartbeat Supervisor",
+            StatusCaption = "Background worker loop healthy and awaiting activation events",
+            ProgressPercent = 100
         });
 
         var autoStartBtn = new Button
@@ -285,10 +311,10 @@ public sealed partial class MainWindow : Window
 
     private object BuildNotificationsPage()
     {
-        var section = new SettingsSectionControl { Title = "Notification Policy", Description = "Deduplication, history, and quiet hours" };
+        var section = new SettingsSection { Title = "Notification Policy", Description = "Deduplication, history, and quiet hours" };
         var quietBtn = new Button { Content = "Toggle Quiet Hours" };
         quietBtn.Click += (_, _) => _notifications.Preferences.QuietHoursEnabled = !_notifications.Preferences.QuietHoursEnabled;
-        section.AddRow(new SettingsRowControl
+        section.AddRow(new SettingsRow
         {
             Header = "Quiet Hours",
             Description = "Suppress banners and native toasts during quiet schedule",

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using NativeShellKit.Abstractions.DependencyInjection;
 using NativeShellKit.Abstractions.Lifecycle;
 using NativeShellKit.Abstractions.Navigation;
+using NativeShellKit.Abstractions.Threading;
 using NativeShellKit.DesignSystem.Controls;
 using NativeShellKit.WinUI.Shell;
 using NativeShellKit.WinUI.Theming;
@@ -20,6 +21,7 @@ public sealed partial class MainWindow : Window
     private readonly IAppHost _host;
     private readonly INavigationService _navigation;
     private readonly IThemeService _theme;
+    private readonly IDisposable _shellAttachment;
 
     public MainWindow(IAppHost host)
     {
@@ -29,28 +31,25 @@ public sealed partial class MainWindow : Window
         _navigation = _host.Services.GetRequiredService<INavigationService>();
         _theme = _host.Services.GetRequiredService<IThemeService>();
         var windowService = _host.Services.GetRequiredService<IShellWindowService>();
-
-        if (windowService is ShellWindowService winUiWindow)
-            winUiWindow.AttachWindow(this, ShellView.ShellTitleBar);
-        if (_theme is WinUiThemeService winUiTheme)
-            winUiTheme.TryApplyBackdrop(this);
-
-        RegisterRoutes();
-        ShellView.Initialize(_host.Identity.DisplayName, _navigation, _theme);
-
+        var dispatcher = _host.Services.GetService<IUiDispatcher>();
 #if (EnableNotifications)
         var notifications = _host.Services.GetRequiredService<INotificationService>();
-        notifications.InAppNotificationRaised += (_, record) =>
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                var banner = new NotificationBannerControl();
-                banner.Show(record);
-                banner.Dismissed += (_, _) => ShellView.SetBannerContent(null);
-                ShellView.SetBannerContent(banner);
-            });
-        };
+#else
+        NativeShellKit.Abstractions.Notifications.INotificationService? notifications = null;
 #endif
+
+        RegisterRoutes();
+
+        _shellAttachment = ShellFrame.AttachServices(
+            _navigation,
+            _theme,
+            notificationService: notifications,
+            windowService: windowService,
+            uiDispatcher: dispatcher,
+            window: this,
+            appTitle: _host.Identity.DisplayName);
+
+        Closed += (_, _) => _shellAttachment.Dispose();
 
 #if (EnableTray)
         var tray = _host.Services.GetRequiredService<NativeTrayService>();
@@ -70,7 +69,7 @@ public sealed partial class MainWindow : Window
 
     private void RegisterRoutes()
     {
-        _navigation.RegisterRoute(new NavigationRouteDescriptor("overview", "Overview", "\uE80F", BuildOverviewPage, Order: 0));
+        _navigation.RegisterRoute(new NavigationRouteDescriptor("overview", "Overview", "\uE80F", BuildOverviewPage, Order: 0, CachePolicy: NavigationCachePolicy.Cached));
 #if (EnableNavigation)
         _navigation.RegisterRoute(new NavigationRouteDescriptor("settings", "Settings", "\uE713", BuildSettingsPage, Order: 10, IsFooterItem: true));
 #endif
@@ -78,20 +77,22 @@ public sealed partial class MainWindow : Window
 
     private object BuildOverviewPage()
     {
-        var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(new PageHeaderControl
+        var stack = new StackPanel { Spacing = 14 };
+        stack.Children.Add(new PageHeader
         {
             Title = _host.Identity.DisplayName,
             Subtitle = "Built from NativeShellKit.Templates",
-            BadgeText = _host.Identity.Version
+            BadgeState = ShellStatusKind.Healthy,
+            BadgeLabel = _host.Identity.Version
         });
 
-        var card = new CompactMetricCard
+        var card = new MetricCard
         {
             Label = "SDK Status",
             Value = "Ready",
             Caption = _host.Identity.AppUserModelId,
-            Glyph = "\uE756"
+            Glyph = "\uE756",
+            TrendState = ShellStatusKind.Healthy
         };
         stack.Children.Add(card);
 
@@ -109,10 +110,10 @@ public sealed partial class MainWindow : Window
 
     private object BuildSettingsPage()
     {
-        var section = new SettingsSectionControl { Title = "Appearance", Description = "Theme & system integration" };
+        var section = new SettingsSection { Title = "Appearance", Description = "Theme & system integration" };
         var toggle = new Button { Content = "Toggle Light / Dark" };
         toggle.Click += (_, _) => _theme.ApplyTheme(_theme.IsDarkEffective ? AppThemeMode.Light : AppThemeMode.Dark);
-        section.AddRow(new SettingsRowControl
+        section.AddRow(new SettingsRow
         {
             Header = "Application Theme",
             Description = "Switch between light and dark fluent themes",

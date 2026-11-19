@@ -51,6 +51,29 @@ jobs:
           samples\BackgroundCompanionApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\BackgroundCompanionApp.exe --self-test || exit /b 1
           samples\UnifiedHostDemo\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\UnifiedHostDemo.exe --self-test || exit /b 1
 
+      - name: Run sample interactive UI tests and capture screenshots
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: powershell
+        run: |
+          $shotRoot = Join-Path (Get-Location) "artifacts\screenshots"
+          New-Item -ItemType Directory -Path $shotRoot -Force | Out-Null
+          $samples = @(
+            @{ Name = "MinimalNativeApp"; Exe = "samples\MinimalNativeApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\MinimalNativeApp.exe"; Out = (Join-Path $shotRoot "minimal") },
+            @{ Name = "BackgroundCompanionApp"; Exe = "samples\BackgroundCompanionApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\BackgroundCompanionApp.exe"; Out = (Join-Path $shotRoot "companion") },
+            @{ Name = "UnifiedHostDemo"; Exe = "samples\UnifiedHostDemo\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\UnifiedHostDemo.exe"; Out = (Join-Path $shotRoot "unified") }
+          )
+          foreach ($s in $samples) {
+            Write-Host "Running interactive UI test for $($s.Name)..."
+            $p = Start-Process -FilePath $s.Exe -ArgumentList "--interactive-test", "`"$($s.Out)`"" -PassThru -NoNewWindow
+            if (-not $p.WaitForExit(90000)) {
+              $p.Kill()
+              throw "$($s.Name) interactive UI test timed out after 90s"
+            }
+            if ($p.ExitCode -ne 0) {
+              throw "$($s.Name) interactive UI test failed with exit code $($p.ExitCode)"
+            }
+          }
+
       - name: Verify dotnet new nativeshellkit template and clean publish (.xbf/.pri)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: powershell
@@ -97,6 +120,14 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"
+
+      - name: Retain UI acceptance screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeShellKit-screenshots-${{ env.SDK_VERSION }}
+          path: artifacts/screenshots/
+          if-no-files-found: warn
 
       - name: Retain verified development feed
         uses: actions/upload-artifact@v4

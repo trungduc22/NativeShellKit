@@ -9,31 +9,114 @@ using Windows.UI.ViewManagement;
 
 namespace NativeShellKit.WinUI.Theming;
 
-public sealed class WinUiThemeService : IThemeService
+public sealed class WinUiThemeService : IThemeService, IDisposable
 {
     public const string DefaultAccentHex = "#2563EB";
     private readonly List<WeakReference<FrameworkElement>> _attachedRoots = [];
     private readonly List<WeakReference<Window>> _attachedWindows = [];
+    private readonly Func<bool>? _highContrastOverride;
+    private readonly Func<bool>? _animationsEnabledOverride;
+    private UISettings? _uiSettings;
     private string? _customAccentHex;
+    private string _brandAccentHex = DefaultAccentHex;
+    private bool _disposed;
 
     public WinUiThemeService()
+        : this(null, null, attachSystemListener: true)
     {
+    }
+
+    internal WinUiThemeService(
+        Func<bool>? highContrastOverride = null,
+        Func<bool>? animationsEnabledOverride = null,
+        bool attachSystemListener = false)
+    {
+        _highContrastOverride = highContrastOverride;
+        _animationsEnabledOverride = animationsEnabledOverride;
+
         CurrentMode = AppThemeMode.System;
+        AccentMode = AccentSourceMode.System;
+        PreferredBackdrop = ShellBackdropKind.MicaBase;
+        EffectiveBackdrop = ShellBackdropKind.Solid;
         IsDarkEffective = ResolveSystemIsDark();
         CurrentAccent = ComputePalette(DefaultAccentHex, IsDarkEffective);
+
+        if (attachSystemListener)
+        {
+            try
+            {
+                _uiSettings = new UISettings();
+                _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
+            }
+            catch
+            {
+                _uiSettings = null;
+            }
+        }
     }
 
     public AppThemeMode CurrentMode { get; private set; }
+    public AccentSourceMode AccentMode { get; private set; }
+    public ShellBackdropKind PreferredBackdrop { get; private set; }
+    public ShellBackdropKind EffectiveBackdrop { get; private set; }
     public bool IsDarkEffective { get; private set; }
     public AccentColorPalette CurrentAccent { get; private set; }
     public bool IsMicaSupported => Environment.OSVersion.Version.Build >= 22000 && MicaController.IsSupported();
+
+    public string BrandAccentHex
+    {
+        get => _brandAccentHex;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                _brandAccentHex = value;
+        }
+    }
+
+    public bool IsHighContrast
+    {
+        get
+        {
+            if (_highContrastOverride is not null)
+                return _highContrastOverride();
+
+            try
+            {
+                return new AccessibilitySettings().HighContrast;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public bool IsAnimationsEnabled
+    {
+        get
+        {
+            if (_animationsEnabledOverride is not null)
+                return _animationsEnabledOverride();
+
+            try
+            {
+                return (_uiSettings ?? new UISettings()).AnimationsEnabled;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+    }
 
     public event EventHandler? ThemeChanged;
 
     public void AttachRoot(FrameworkElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        _attachedRoots.Add(new WeakReference<FrameworkElement>(element));
+        if (!_attachedRoots.Any(r => r.TryGetTarget(out var existing) && ReferenceEquals(existing, element)))
+            _attachedRoots.Add(new WeakReference<FrameworkElement>(element));
+
         element.RequestedTheme = ToElementTheme(CurrentMode);
     }
 
@@ -44,15 +127,31 @@ public sealed class WinUiThemeService : IThemeService
         {
             _attachedWindows.Add(new WeakReference<Window>(window));
         }
-        ApplyWindowTheme(window, CurrentMode, IsDarkEffective);
+        ApplyWindowTheme(window, CurrentMode, IsDarkEffective, IsHighContrast);
     }
 
     public void ApplyTheme(AppThemeMode mode, string? customAccentHex = null)
     {
+        var accentMode = !string.IsNullOrWhiteSpace(customAccentHex)
+            ? AccentSourceMode.Custom
+            : AccentMode;
+        ApplyTheme(mode, accentMode, customAccentHex, PreferredBackdrop);
+    }
+
+    public void ApplyTheme(
+        AppThemeMode mode,
+        AccentSourceMode accentMode,
+        string? customAccentHex = null,
+        ShellBackdropKind? backdrop = null)
+    {
         CurrentMode = mode;
+        AccentMode = accentMode;
         if (!string.IsNullOrWhiteSpace(customAccentHex))
             _customAccentHex = customAccentHex;
+        if (backdrop.HasValue)
+            PreferredBackdrop = backdrop.Value;
 
+        bool highContrast = IsHighContrast;
         IsDarkEffective = mode switch
         {
             AppThemeMode.Dark => true,
@@ -60,12 +159,13 @@ public sealed class WinUiThemeService : IThemeService
             _ => ResolveSystemIsDark()
         };
 
-        var seedHex = !string.IsNullOrWhiteSpace(_customAccentHex)
-            ? _customAccentHex
-            : ResolveWindowsAccentHex() ?? DefaultAccentHex;
-
+        string seedHex = ResolveSeedAccentHex(accentMode);
         CurrentAccent = ComputePalette(seedHex, IsDarkEffective);
-        ApplyToApplicationResources(CurrentAccent);
+
+        if (!highContrast)
+        {
+            ApplyToApplicationResources(CurrentAccent);
+        }
 
         var requested = ToElementTheme(mode);
         for (int i = _attachedRoots.Count - 1; i >= 0; i--)
@@ -87,7 +187,9 @@ public sealed class WinUiThemeService : IThemeService
         {
             if (_attachedWindows[i].TryGetTarget(out var win))
             {
-                ApplyWindowTheme(win, mode, IsDarkEffective);
+                ApplyWindowTheme(win, mode, IsDarkEffective, highContrast);
+                if (backdrop.HasValue || highContrast)
+                    TryApplyBackdrop(win, PreferredBackdrop);
             }
             else
             {
@@ -108,7 +210,18 @@ public sealed class WinUiThemeService : IThemeService
         var hover = Scale(effective, isDark ? 0.90 : 1.10);
         var pressed = Scale(effective, isDark ? 0.78 : 0.86);
         var subtle = Color.FromArgb(isDark ? (byte)42 : (byte)28, effective.R, effective.G, effective.B);
-        var contrast = Luminance(effective) > 0.42 ? "#0F172A" : "#FFFFFF";
+
+        // Enforce WCAG AA contrast >= 4.5:1 for foreground text on accent fill.
+        var white = Color.FromArgb(255, 255, 255, 255);
+        var darkSlate = Color.FromArgb(255, 15, 23, 42);
+        var black = Color.FromArgb(255, 0, 0, 0);
+        double whiteRatio = ContrastRatio(effective, white);
+        double slateRatio = ContrastRatio(effective, darkSlate);
+        string contrast;
+        if (whiteRatio >= slateRatio)
+            contrast = whiteRatio >= 4.5 ? "#FFFFFF" : (ContrastRatio(effective, black) > whiteRatio ? "#000000" : "#FFFFFF");
+        else
+            contrast = slateRatio >= 4.5 ? "#0F172A" : "#000000";
 
         return new AccentColorPalette(
             ToHex(effective),
@@ -118,31 +231,93 @@ public sealed class WinUiThemeService : IThemeService
             contrast);
     }
 
-    public bool TryApplyBackdrop(Window window)
+    public bool TryApplyBackdrop(Window window) => TryApplyBackdrop(window, PreferredBackdrop);
+
+    public bool TryApplyBackdrop(Window window, ShellBackdropKind kind)
     {
         ArgumentNullException.ThrowIfNull(window);
+        PreferredBackdrop = kind;
         AttachWindow(window);
+
+        if (IsHighContrast || kind == ShellBackdropKind.Solid)
+        {
+            SetWindowBackdropSafe(window, null);
+            EffectiveBackdrop = ShellBackdropKind.Solid;
+            return false;
+        }
+
         try
         {
-            if (IsMicaSupported)
+            if (kind is ShellBackdropKind.MicaBase or ShellBackdropKind.MicaAlt && IsMicaSupported)
             {
-                window.SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
+                var micaKind = kind == ShellBackdropKind.MicaAlt ? MicaKind.BaseAlt : MicaKind.Base;
+                window.SystemBackdrop = new MicaBackdrop { Kind = micaKind };
+                EffectiveBackdrop = kind;
                 return true;
             }
+
             if (DesktopAcrylicController.IsSupported())
             {
                 window.SystemBackdrop = new DesktopAcrylicBackdrop();
+                EffectiveBackdrop = ShellBackdropKind.Acrylic;
                 return true;
             }
         }
         catch
         {
-            // Headless or unsupported compositor falls back to solid surface background
+            // Headless or unsupported compositor falls back cleanly to solid surface background.
         }
+
+        SetWindowBackdropSafe(window, null);
+        EffectiveBackdrop = ShellBackdropKind.Solid;
         return false;
     }
 
-    private static void ApplyWindowTheme(Window window, AppThemeMode mode, bool isDark)
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        if (_uiSettings is not null)
+        {
+            _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
+            _uiSettings = null;
+        }
+    }
+
+    private string ResolveSeedAccentHex(AccentSourceMode accentMode) => accentMode switch
+    {
+        AccentSourceMode.Custom when !string.IsNullOrWhiteSpace(_customAccentHex) => _customAccentHex,
+        AccentSourceMode.AppBrand => _brandAccentHex,
+        AccentSourceMode.System => ResolveWindowsAccentHex() ?? _brandAccentHex,
+        _ => !string.IsNullOrWhiteSpace(_customAccentHex) ? _customAccentHex : ResolveWindowsAccentHex() ?? _brandAccentHex
+    };
+
+    private void OnSystemColorValuesChanged(UISettings sender, object args)
+    {
+        if (_disposed)
+            return;
+
+        if (CurrentMode == AppThemeMode.System || AccentMode == AccentSourceMode.System || IsHighContrast)
+        {
+            ApplyTheme(CurrentMode, AccentMode, _customAccentHex, PreferredBackdrop);
+        }
+    }
+
+    private static void SetWindowBackdropSafe(Window window, SystemBackdrop? backdrop)
+    {
+        void Apply()
+        {
+            try { window.SystemBackdrop = backdrop; } catch { }
+        }
+
+        if (window.DispatcherQueue is { HasThreadAccess: false } queue)
+            queue.TryEnqueue(Apply);
+        else
+            Apply();
+    }
+
+    private static void ApplyWindowTheme(Window window, AppThemeMode mode, bool isDark, bool isHighContrast)
     {
         var requested = ToElementTheme(mode);
         void Apply()
@@ -151,6 +326,9 @@ public sealed class WinUiThemeService : IThemeService
             {
                 contentRoot.RequestedTheme = requested;
             }
+
+            if (isHighContrast)
+                return;
 
             try
             {
@@ -197,13 +375,27 @@ public sealed class WinUiThemeService : IThemeService
                 res["SystemAccentColor"] = primary;
                 SetBrush(res, "AccentFillColorDefaultBrush", primary);
                 SetBrush(res, "NativeShellAccentBrush", primary);
+                SetBrush(res, "NskAccentDefaultBrush", primary);
             }
             if (TryParseHex(palette.HoverHex, out var hover))
+            {
                 SetBrush(res, "AccentFillColorSecondaryBrush", hover);
+                SetBrush(res, "NskAccentHoverBrush", hover);
+            }
             if (TryParseHex(palette.PressedHex, out var pressed))
+            {
                 SetBrush(res, "AccentFillColorTertiaryBrush", pressed);
+                SetBrush(res, "NskAccentPressedBrush", pressed);
+            }
+            if (TryParseHex(palette.SubtleTintHex, out var subtle))
+            {
+                SetBrush(res, "NskAccentSubtleBrush", subtle);
+            }
             if (TryParseHex(palette.ContrastForegroundHex, out var fg))
+            {
                 SetBrush(res, "TextOnAccentFillColorPrimaryBrush", fg);
+                SetBrush(res, "NskTextOnAccentBrush", fg);
+            }
         }
         catch
         {
@@ -271,6 +463,15 @@ public sealed class WinUiThemeService : IThemeService
             return true;
         }
         return false;
+    }
+
+    public static double ContrastRatio(Color first, Color second)
+    {
+        double l1 = Luminance(first);
+        double l2 = Luminance(second);
+        double lighter = Math.Max(l1, l2);
+        double darker = Math.Min(l1, l2);
+        return (lighter + 0.05) / (darker + 0.05);
     }
 
     private static Color ParseOrDefault(string hex) =>

@@ -1,0 +1,7 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Duration x:Key="NskMotionFast">0:0:0.083</Duration>
+    <Duration x:Key="NskMotionStandard">0:0:0.167</Duration>
+    <Duration x:Key="NskMotionEmphasized">0:0:0.250</Duration>
+</ResourceDictionary>

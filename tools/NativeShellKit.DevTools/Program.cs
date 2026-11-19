@@ -30,7 +30,7 @@ public static class Program
     private static int RunInfo()
     {
         var ver = typeof(Program).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "0.2.0-alpha.1";
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "0.2.0-alpha.2";
         Console.WriteLine($"NativeShellKit CLI (nsk) {ver}");
         Console.WriteLine($"OS: {Environment.OSVersion.VersionString} (x64={Environment.Is64BitProcess})");
         Console.WriteLine($"Runtime: {Environment.Version}");

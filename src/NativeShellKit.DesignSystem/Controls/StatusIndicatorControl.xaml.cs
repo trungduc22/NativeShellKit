@@ -1,63 +1,60 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Windows.UI;
 
 namespace NativeShellKit.DesignSystem.Controls;
 
-public enum ShellIndicatorState
-{
-    Healthy,
-    Active,
-    Warning,
-    Error,
-    Offline
-}
-
+[Obsolete("Use StatusBadge instead. StatusIndicatorControl will be removed in 0.3.0.")]
 public sealed partial class StatusIndicatorControl : UserControl
 {
-    private ShellIndicatorState _state = ShellIndicatorState.Healthy;
+    public static readonly DependencyProperty StateProperty = DependencyProperty.Register(
+        nameof(State), typeof(ShellIndicatorState), typeof(StatusIndicatorControl),
+        new PropertyMetadata(ShellIndicatorState.Healthy, OnStateChanged));
+
+    public static readonly DependencyProperty LabelProperty = DependencyProperty.Register(
+        nameof(Label), typeof(string), typeof(StatusIndicatorControl),
+        new PropertyMetadata(string.Empty, OnLabelChanged));
 
     public StatusIndicatorControl()
     {
         InitializeComponent();
-        ApplyVisualState();
+        SyncState();
     }
 
     public ShellIndicatorState State
     {
-        get => _state;
-        set
-        {
-            _state = value;
-            ApplyVisualState();
-        }
+        get => (ShellIndicatorState)GetValue(StateProperty);
+        set => SetValue(StateProperty, value);
     }
 
     public string Label
     {
-        get => LabelTextBlock.Text;
-        set
-        {
-            LabelTextBlock.Text = value ?? string.Empty;
-            AutomationProperties.SetName(this, $"{_state}: {LabelTextBlock.Text}");
-        }
+        get => (string)GetValue(LabelProperty);
+        set => SetValue(LabelProperty, value);
     }
 
-    private void ApplyVisualState()
-    {
-        var (bg, fg) = _state switch
-        {
-            ShellIndicatorState.Healthy => (Color.FromArgb(32, 16, 185, 129), Color.FromArgb(255, 5, 150, 105)),
-            ShellIndicatorState.Active => (Color.FromArgb(32, 37, 99, 235), Color.FromArgb(255, 37, 99, 235)),
-            ShellIndicatorState.Warning => (Color.FromArgb(32, 217, 119, 6), Color.FromArgb(255, 217, 119, 6)),
-            ShellIndicatorState.Error => (Color.FromArgb(32, 220, 38, 38), Color.FromArgb(255, 220, 38, 38)),
-            _ => (Color.FromArgb(32, 100, 116, 139), Color.FromArgb(255, 100, 116, 139))
-        };
+    private static void OnStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((StatusIndicatorControl)d).SyncState();
 
-        var fgBrush = new SolidColorBrush(fg);
-        PillBorder.Background = new SolidColorBrush(bg);
-        DotEllipse.Fill = fgBrush;
-        LabelTextBlock.Foreground = fgBrush;
+    private static void OnLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((StatusIndicatorControl)d).SyncLabel();
+
+    private void SyncState()
+    {
+        InnerBadge.State = State switch
+        {
+            ShellIndicatorState.Healthy => ShellStatusKind.Healthy,
+            ShellIndicatorState.Active => ShellStatusKind.Active,
+            ShellIndicatorState.Warning => ShellStatusKind.Warning,
+            ShellIndicatorState.Error => ShellStatusKind.Error,
+            _ => ShellStatusKind.Offline
+        };
+        AutomationProperties.SetName(this, $"{State}: {Label}");
+    }
+
+    private void SyncLabel()
+    {
+        InnerBadge.Label = Label ?? string.Empty;
+        AutomationProperties.SetName(this, $"{State}: {Label}");
     }
 }

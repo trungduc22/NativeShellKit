@@ -38,4 +38,8 @@
     <ProjectReference Include="..\NativeShellKit.Abstractions\NativeShellKit.Abstractions.csproj" />
     <ProjectReference Include="..\NativeShellKit.Hosting\NativeShellKit.Hosting.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NativeShellKit.Tests" />
+  </ItemGroup>
 </Project>

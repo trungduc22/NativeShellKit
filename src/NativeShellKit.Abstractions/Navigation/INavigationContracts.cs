@@ -48,6 +48,21 @@ public interface INavigationService
     bool GoBack();
 }
 
+public enum AccentSourceMode
+{
+    System,
+    AppBrand,
+    Custom
+}
+
+public enum ShellBackdropKind
+{
+    MicaBase,
+    MicaAlt,
+    Acrylic,
+    Solid
+}
+
 public enum AppThemeMode
 {
     System,
@@ -75,12 +90,38 @@ public interface IThemeService
     AccentColorPalette ComputePalette(string accentHex, bool isDark);
 }
 
+public enum DialogDefaultButton
+{
+    Primary,
+    Secondary,
+    Close
+}
+
 public sealed record DialogRequest(
     string Title,
     string Message,
     string PrimaryButtonText = "OK",
     string? SecondaryButtonText = null,
-    string? CloseButtonText = null);
+    string? CloseButtonText = null)
+{
+    public DialogDefaultButton DefaultButton { get; init; } = DialogDefaultButton.Primary;
+}
+
+public sealed record DestructiveDialogRequest(
+    string Title,
+    string Message,
+    string ConfirmButtonText,
+    string CancelButtonText = "Cancel");
+
+public sealed record ProgressDialogRequest(
+    string Title,
+    string InitialStatus,
+    bool IsCancelable = false,
+    string CancelButtonText = "Cancel");
+
+public sealed record DialogProgressUpdate(
+    string Status,
+    double? Percent = null);
 
 public enum DialogOutcome
 {
