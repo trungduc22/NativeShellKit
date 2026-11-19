@@ -53,7 +53,7 @@ jobs:
 
       - name: Run sample interactive UI tests and capture screenshots
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        shell: powershell
+        shell: pwsh
         run: |
           $shotRoot = Join-Path (Get-Location) "artifacts\screenshots"
           New-Item -ItemType Directory -Path $shotRoot -Force | Out-Null
@@ -64,13 +64,28 @@ jobs:
           )
           foreach ($s in $samples) {
             Write-Host "Running interactive UI test for $($s.Name)..."
-            $p = Start-Process -FilePath $s.Exe -ArgumentList "--interactive-test", "`"$($s.Out)`"" -PassThru -NoNewWindow
+            $exePath = (Resolve-Path $s.Exe).Path
+            $psi = [System.Diagnostics.ProcessStartInfo]::new($exePath)
+            $psi.WorkingDirectory = Split-Path -Parent $exePath
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.ArgumentList.Add("--interactive-test")
+            $psi.ArgumentList.Add($s.Out)
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $stdoutTask = $p.StandardOutput.ReadToEndAsync()
+            $stderrTask = $p.StandardError.ReadToEndAsync()
             if (-not $p.WaitForExit(90000)) {
-              $p.Kill()
+              $p.Kill($true)
               throw "$($s.Name) interactive UI test timed out after 90s"
             }
+            $p.WaitForExit()
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+            if ($stdout) { Write-Host $stdout.TrimEnd() }
+            if ($stderr) { Write-Host "::warning::$($s.Name) stderr: $($stderr.TrimEnd())" }
             if ($p.ExitCode -ne 0) {
-              throw "$($s.Name) interactive UI test failed with exit code $($p.ExitCode)"
+              throw "$($s.Name) interactive UI test failed with exit code $($p.ExitCode)`n$stderr"
             }
           }
 

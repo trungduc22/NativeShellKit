@@ -23,8 +23,10 @@ public sealed partial class DesignSystemThemeResources : ResourceDictionary
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            if (Application.Current is not null)
+                Console.Error.WriteLine($"DesignSystemThemeResources.EnsureLoaded failed: {ex}");
             return false;
         }
     }

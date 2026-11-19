@@ -164,14 +164,21 @@ public sealed class UiServicesAndDesignSystemTests
         int active = 0;
         int maxConcurrent = 0;
 
-        var coordinator = new DialogCoordinator(dispatcher, async (_, ct) =>
+        var coordinator = new DialogCoordinator(dispatcher, async (inner, ct) =>
         {
             Assert.True(dispatcher.IsOnMockUiThread, "Dialog action did not marshal via IUiDispatcher.");
             int cur = Interlocked.Increment(ref active);
             maxConcurrent = Math.Max(maxConcurrent, cur);
-            await Task.Delay(35, ct);
-            Interlocked.Decrement(ref active);
-            return DialogOutcome.Primary;
+            try
+            {
+                await Task.Delay(35, ct);
+                _ = await inner();
+                return DialogOutcome.Primary;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
         });
 
         var t1 = coordinator.ShowMessageAsync(new DialogRequest("One", "First"));

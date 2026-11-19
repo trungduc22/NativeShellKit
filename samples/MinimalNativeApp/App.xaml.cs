@@ -20,13 +20,27 @@ public sealed partial class App : Application
         _interactiveOutputDir = interactiveOutputDir;
         _onAcceptanceComplete = onAcceptanceComplete;
         InitializeComponent();
+        UnhandledException += (_, e) =>
+        {
+            Console.Error.WriteLine($"MinimalNativeApp UnhandledException: {e.Message}\n{e.Exception}");
+            _onAcceptanceComplete?.Invoke(3);
+        };
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        DesignSystemThemeResources.EnsureLoaded();
-        await _host.StartAsync();
-        _window = new MainWindow(_host, _interactiveOutputDir, _onAcceptanceComplete);
-        _window.Activate();
+        try
+        {
+            DesignSystemThemeResources.EnsureLoaded();
+            await _host.StartAsync();
+            _window = new MainWindow(_host, _interactiveOutputDir, _onAcceptanceComplete);
+            _window.Activate();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"MinimalNativeApp OnLaunched error: {ex}");
+            _onAcceptanceComplete?.Invoke(4);
+            Exit();
+        }
     }
 }
