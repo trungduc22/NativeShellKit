@@ -100,7 +100,7 @@ public partial class ModuleCardBoundary : Control
         switch (HealthState)
         {
             case ModuleHealthState.Healthy:
-            case ModuleHealthState.Registered:
+            case ModuleHealthState.Uninitialized:
             case ModuleHealthState.Starting:
             case ModuleHealthState.Stopped:
                 FallbackViewState = ShellViewState.Content;
