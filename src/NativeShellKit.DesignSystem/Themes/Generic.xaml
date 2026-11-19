@@ -4,11 +4,11 @@
     xmlns:controls="using:NativeShellKit.DesignSystem.Controls">
 
     <ResourceDictionary.MergedDictionaries>
-        <ResourceDictionary Source="Tokens/SurfacesAndColors.xaml" />
-        <ResourceDictionary Source="Tokens/Typography.xaml" />
-        <ResourceDictionary Source="Tokens/MetricsAndRadii.xaml" />
-        <ResourceDictionary Source="Tokens/DensityStandard.xaml" />
-        <ResourceDictionary Source="Tokens/Motion.xaml" />
+        <ResourceDictionary Source="ms-appx:///NativeShellKit.DesignSystem/Themes/Tokens/SurfacesAndColors.xaml" />
+        <ResourceDictionary Source="ms-appx:///NativeShellKit.DesignSystem/Themes/Tokens/Typography.xaml" />
+        <ResourceDictionary Source="ms-appx:///NativeShellKit.DesignSystem/Themes/Tokens/MetricsAndRadii.xaml" />
+        <ResourceDictionary Source="ms-appx:///NativeShellKit.DesignSystem/Themes/Tokens/DensityStandard.xaml" />
+        <ResourceDictionary Source="ms-appx:///NativeShellKit.DesignSystem/Themes/Tokens/Motion.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
     <!-- StatusBadge -->
