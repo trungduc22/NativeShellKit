@@ -184,6 +184,32 @@ public sealed class HostingAndIdentityTests
     }
 
     [Fact]
+    public async Task SupervisedWorkers_DrainConcurrentQuickWorkersAndPeriodicWork()
+    {
+        await using var supervisor = new BackgroundTaskSupervisor();
+        var tasks = new Task[1_500];
+        Parallel.For(0, tasks.Length, index =>
+            tasks[index] = supervisor.RunSupervisedAsync("finite", _ => Task.CompletedTask));
+        await Task.WhenAll(tasks);
+        Assert.Equal(0, supervisor.ActiveTaskCount);
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loop = supervisor.RunSupervisedLoopAsync("periodic", TimeSpan.FromMinutes(1), _ =>
+        {
+            started.TrySetResult();
+            return Task.CompletedTask;
+        });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("periodic", supervisor.ActiveTaskNames);
+
+        await supervisor.StopAllAsync(TimeSpan.FromSeconds(5));
+        Assert.True(loop.IsCompletedSuccessfully);
+        Assert.Empty(supervisor.ActiveTaskNames);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            supervisor.RunSupervisedAsync("late", _ => Task.CompletedTask));
+    }
+
+    [Fact]
     public async Task HostLifecycle_ExecutesHooksInOrder_AndIsolatesBackgroundTaskFaults()
     {
         using var tmp = new TempRootScope();

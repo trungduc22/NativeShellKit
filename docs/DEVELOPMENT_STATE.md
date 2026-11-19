@@ -34,3 +34,11 @@ M12 package preparation is tracked in [M12 state](migrations/M12_STATE.md). This
 ## Next Concrete Task
 
 Verify `0.2.0-alpha.3` CI run + updated screenshots, pin commit SHA for consumers, then execute **M14 & M16** on `HiberDesk` (`convergence/hiberdesk-2.0`).
+
+## 0.2.0-alpha.3 downstream verification and worker drain
+
+SDK baseline `0c652d7e720309cb1f38d04b10fcb5bd102928b6` passed [CI 44460017713](https://github.com/trungduc22/NativeShellKit/actions/runs/44460017713) with 33 tests and screenshots from three interactive samples. The 13 CI packages matched their SHA-256 manifest. A separate local WinUI consumer generated from this feed published and passed its executable self-test. Its nine SDK DLLs matched the package payloads byte for byte, including the expected WinUI and DesignSystem PRI indexes and 13 compiled XAML resources in the output.
+
+A direct .NET 10 consumer reproduced a worker-tracking race in alpha.3. After all 1,500 workers in a batch had completed, one was still reported active. Completion could remove the tracking record before scheduling recorded it. This branch synchronizes scheduling and removal, and closes admission before draining. The source build passed eight runs of the same 18,000-worker workload with zero retained entries. The regression test covers concurrent completion, periodic cancellation and late submissions.
+
+This source fix is on `fix/sdk2-worker-drain`. The archived alpha.3 feed stays pinned to its original commit.

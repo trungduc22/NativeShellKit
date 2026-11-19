@@ -1,104 +1,122 @@
-using System.Collections.Concurrent;
 using NativeShellKit.Abstractions.Lifecycle;
 using NativeShellKit.Abstractions.Settings;
 
 namespace NativeShellKit.Hosting.Hosting;
 
-public sealed class BackgroundTaskSupervisor : IBackgroundTaskSupervisor
+public sealed class BackgroundTaskSupervisor(ISdkLogger? logger = null) : IBackgroundTaskSupervisor
 {
-    private readonly CancellationTokenSource _shutdownCts = new();
-    private readonly ConcurrentDictionary<Guid, (string Name, Task Task)> _runningTasks = new();
-    private readonly ISdkLogger? _logger;
+    private readonly object _gate = new();
+    private readonly CancellationTokenSource _shutdown = new();
+    private readonly Dictionary<Guid, (string Name, Task Task)> _running = [];
+    private Task? _draining;
     private bool _disposed;
-
-    public BackgroundTaskSupervisor(ISdkLogger? logger = null)
-    {
-        _logger = logger;
-    }
 
     public event Action<string, Exception>? TaskFailed;
 
-    public int ActiveTaskCount => _runningTasks.Count;
+    public int ActiveTaskCount
+    {
+        get { lock (_gate) return _running.Count; }
+    }
 
-    public IReadOnlyCollection<string> ActiveTaskNames =>
-        _runningTasks.Values
-            .Select(v => v.Name)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+    public IReadOnlyCollection<string> ActiveTaskNames
+    {
+        get { lock (_gate) return _running.Values.Select(work => work.Name).Distinct(StringComparer.Ordinal).ToArray(); }
+    }
 
     public Task RunSupervisedAsync(string taskName, Func<CancellationToken, Task> work)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
         ArgumentNullException.ThrowIfNull(work);
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var trimmedName = taskName.Trim();
-        var id = Guid.NewGuid();
-        var task = Task.Run(async () =>
+        taskName = taskName.Trim();
+        lock (_gate)
         {
-            try
-            {
-                await work(_shutdownCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
-            {
-                // Graceful shutdown
-            }
-            catch (Exception ex)
-            {
-                _logger?.Log(SdkLogLevel.Error, "BackgroundTaskSupervisor", $"Supervised task '{trimmedName}' failed.", ex);
-                TaskFailed?.Invoke(trimmedName, ex);
-            }
-            finally
-            {
-                _runningTasks.TryRemove(id, out _);
-            }
-        }, _shutdownCts.Token);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_draining is not null)
+                return Task.FromCanceled(_shutdown.Token);
 
-        _runningTasks[id] = (trimmedName, task);
-        return task;
+            var id = Guid.NewGuid();
+            var token = _shutdown.Token;
+            var task = Task.Run(() => ExecuteAsync(id, taskName, work, token));
+            _running.Add(id, (taskName, task));
+            return task;
+        }
     }
 
     public Task RunSupervisedLoopAsync(
-        string taskName,
-        TimeSpan interval,
-        Func<CancellationToken, Task> iteration,
-        bool runImmediately = true)
+        string taskName, TimeSpan interval, Func<CancellationToken, Task> iteration, bool runImmediately = true)
     {
         ArgumentNullException.ThrowIfNull(iteration);
         var effectiveInterval = interval > TimeSpan.Zero ? interval : TimeSpan.FromSeconds(1);
-        return RunSupervisedAsync(taskName, async ct =>
+        return RunSupervisedAsync(taskName, async token =>
         {
-            if (runImmediately && !ct.IsCancellationRequested)
-                await iteration(ct).ConfigureAwait(false);
-
             using var timer = new PeriodicTimer(effectiveInterval);
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
-            {
-                await iteration(ct).ConfigureAwait(false);
-            }
+            if (runImmediately)
+                await iteration(token).ConfigureAwait(false);
+            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+                await iteration(token).ConfigureAwait(false);
         });
+    }
+
+    private async Task ExecuteAsync(Guid id, string name, Func<CancellationToken, Task> work, CancellationToken token)
+    {
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            await work(token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // Normal host shutdown.
+        }
+        catch (Exception ex)
+        {
+            logger?.Log(SdkLogLevel.Error, nameof(BackgroundTaskSupervisor), $"Supervised task '{name}' failed.", ex);
+            TaskFailed?.Invoke(name, ex);
+        }
+        finally
+        {
+            lock (_gate) _running.Remove(id);
+        }
     }
 
     public async Task StopAllAsync(TimeSpan timeout)
     {
-        if (!_shutdownCts.IsCancellationRequested)
-            _shutdownCts.Cancel();
+        Task draining = BeginDrain();
+        await Task.WhenAny(draining, Task.Delay(timeout)).ConfigureAwait(false);
+        _ = draining.Exception;
+    }
 
-        var snapshot = _runningTasks.Values.Select(v => v.Task).ToArray();
-        if (snapshot.Length == 0)
-            return;
-
-        var allDone = Task.WhenAll(snapshot);
-        await Task.WhenAny(allDone, Task.Delay(timeout)).ConfigureAwait(false);
+    private Task BeginDrain()
+    {
+        lock (_gate)
+        {
+            return _draining ??= Task.WhenAll(_running.Values.Select(work => work.Task).Append(_shutdown.CancelAsync()));
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-        _disposed = true;
-        await StopAllAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-        _shutdownCts.Dispose();
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+        }
+
+        var draining = BeginDrain();
+        if (await Task.WhenAny(draining, Task.Delay(TimeSpan.FromSeconds(3))).ConfigureAwait(false) == draining)
+        {
+            _ = draining.Exception;
+            _shutdown.Dispose();
+        }
+        else
+        {
+            _ = draining.ContinueWith(task =>
+            {
+                _ = task.Exception;
+                _shutdown.Dispose();
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 }
