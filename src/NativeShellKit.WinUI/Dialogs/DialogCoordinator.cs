@@ -41,9 +41,9 @@ public sealed class DialogCoordinator : IDialogService
     public void AttachXamlRoot(XamlRoot xamlRoot)
     {
         _xamlRoot = xamlRoot;
-        if (_dispatcher is null && xamlRoot.DispatcherQueue is not null)
+        if (_dispatcher is null && xamlRoot.Content?.DispatcherQueue is { } queue)
         {
-            _dispatcher = new UiDispatcherHelper(xamlRoot.DispatcherQueue);
+            _dispatcher = new UiDispatcherHelper(queue);
         }
     }
 
@@ -179,7 +179,7 @@ public sealed class DialogCoordinator : IDialogService
 
                 if (_dispatcher is not null)
                     _dispatcher.TryEnqueue(UpdateUi);
-                else if (_xamlRoot.DispatcherQueue is { } q)
+                else if (_xamlRoot.Content?.DispatcherQueue is { } q)
                     q.TryEnqueue(UpdateUi);
                 else
                     UpdateUi();
@@ -304,7 +304,7 @@ public sealed class DialogCoordinator : IDialogService
                 return result;
             }
 
-            if (_xamlRoot?.DispatcherQueue is { HasThreadAccess: false } queue)
+            if (_xamlRoot?.Content?.DispatcherQueue is { HasThreadAccess: false } queue)
             {
                 DialogOutcome result = DialogOutcome.Closed;
                 var helper = new UiDispatcherHelper(queue);
