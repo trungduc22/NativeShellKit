@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.0-alpha.1",
+    [string]$Version = "0.1.0-alpha.2",
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
     [string]$OutputDir = "",
@@ -15,7 +15,13 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-Get-ChildItem -Path $OutputDir -Filter "*.nupkg" -ErrorAction SilentlyContinue | Remove-Item -Force
+if (Get-ChildItem -LiteralPath $OutputDir -Force | Select-Object -First 1) {
+    throw "The package output directory is not empty. Choose a fresh directory to preserve immutable packages."
+}
+[xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot "Directory.Build.props") -Raw
+if ($Version -ne $buildProps.Project.PropertyGroup.Version) {
+    throw "The requested version must match Directory.Build.props."
+}
 
 $projects = @(
     "src\NativeShellKit.Abstractions\NativeShellKit.Abstractions.csproj",
@@ -63,8 +69,8 @@ Write-Host "[3/3] Validating generated .nupkg packages and writing SHA256SUMS.tx
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $packages = Get-ChildItem -Path $OutputDir -Filter "NativeShellKit.*.nupkg" | Sort-Object Name
 $expectedCount = $projects.Count + 1
-if ($packages.Count -lt $expectedCount) {
-    throw "Expected at least $expectedCount packages in '$OutputDir', found $($packages.Count)."
+if ($packages.Count -ne $expectedCount) {
+    throw "Expected exactly $expectedCount packages in '$OutputDir', found $($packages.Count)."
 }
 
 $manifestItems = @()

@@ -1,5 +1,9 @@
 # NativeShellKit Versioning and Upgrade Policy
 
+## M12 package train
+
+`0.1.0-alpha.2` identifies the M11 scoped DI and notification contract changes. Existing `alpha.1` feeds remain immutable. See [M12 state](migrations/M12_STATE.md) for validation.
+
 ## 1. Semantic Versioning Contract
 
 NativeShellKit follows Semantic Versioning 2.0 (`MAJOR.MINOR.PATCH[-prerelease]`):

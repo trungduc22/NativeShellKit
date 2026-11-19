@@ -2,7 +2,7 @@ name: NativeShellKit CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, migration/m12-sdk ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -52,7 +52,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: powershell
         run: |
-          dotnet new install artifacts\packages\NativeShellKit.Templates.0.1.0-alpha.1.nupkg
+          dotnet new install artifacts\packages\NativeShellKit.Templates.0.1.0-alpha.2.nupkg
           $tplTest = Join-Path $env:RUNNER_TEMP "MyNextApp"
           dotnet new nativeshellkit -n MyNextApp -o $tplTest
           dotnet restore "$tplTest\MyNextApp.csproj" -p:RestoreAdditionalProjectSources="${{ github.workspace }}\artifacts\packages"
@@ -75,3 +75,11 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"
+
+
+      - name: Retain verified development feed
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeShellKit-feed-alpha2
+          path: artifacts/packages/
+          if-no-files-found: error

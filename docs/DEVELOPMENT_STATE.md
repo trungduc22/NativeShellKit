@@ -1,5 +1,7 @@
 # NativeShellKit Development State
 
+M12 package preparation is tracked in [M12 state](migrations/M12_STATE.md). This file records the preceding M11 checkpoint.
+
 - **Current SDK Version:** `0.1.0-alpha.1`
 - **Target Framework:** `net10.0-windows10.0.19041.0`
 - **Windows App SDK Baseline:** `2.6.4`

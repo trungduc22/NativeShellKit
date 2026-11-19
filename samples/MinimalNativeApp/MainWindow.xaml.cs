@@ -209,7 +209,7 @@ public sealed partial class MainWindow : Window
         {
             Title = "Design System Showcase",
             Subtitle = "Reusable WinUI 3 controls with Fluent tokens",
-            BadgeText = "0.1.0-alpha.1"
+            BadgeText = "0.1.0-alpha.2"
         });
 
         stack.Children.Add(new SearchBarControl { Placeholder = "Filter controls or settings..." });
