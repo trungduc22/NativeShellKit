@@ -67,6 +67,14 @@ public sealed class DiagnosticsAndPackagingTests
             bool isTemplate = name.StartsWith("NativeShellKit.Templates.", StringComparison.OrdinalIgnoreCase);
             var res = ReleasePackagingValidator.ValidatePackageArchive(pkg, isWinUi, isTemplate);
             Assert.True(res.IsValid, $"{name}: {res.ErrorMessage}");
+
+            if (name.StartsWith("NativeShellKit.Abstractions.", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("NativeShellKit.Hosting.", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("NativeShellKit.Build.", StringComparison.OrdinalIgnoreCase))
+            {
+                using var archive = System.IO.Compression.ZipFile.OpenRead(pkg);
+                Assert.Contains(archive.Entries, e => e.FullName.Replace('\\', '/').StartsWith("lib/net10.0/", StringComparison.OrdinalIgnoreCase));
+            }
         }
     }
 

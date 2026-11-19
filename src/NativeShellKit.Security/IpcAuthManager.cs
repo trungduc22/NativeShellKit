@@ -109,13 +109,22 @@ public sealed class IpcAuthManager
 
     private void PruneExpiredNonces(long nowMs, long skewMs)
     {
-        if (_seenNonces.Count < 1024)
+        if (_seenNonces.Count < 512)
             return;
 
         foreach (var kv in _seenNonces)
         {
             if (Math.Abs(nowMs - kv.Value) > skewMs)
                 _seenNonces.TryRemove(kv.Key, out _);
+        }
+
+        if (_seenNonces.Count >= 1024)
+        {
+            int toRemove = _seenNonces.Count - 512;
+            foreach (var old in _seenNonces.OrderBy(kv => kv.Value).Take(toRemove))
+            {
+                _seenNonces.TryRemove(old.Key, out _);
+            }
         }
     }
 

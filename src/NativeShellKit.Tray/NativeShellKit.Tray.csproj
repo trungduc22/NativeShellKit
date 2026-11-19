@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NativeShellKit.Abstractions\NativeShellKit.Abstractions.csproj" />
+    <ProjectReference Include="..\NativeShellKit.Hosting\NativeShellKit.Hosting.csproj" />
     <ProjectReference Include="..\NativeShellKit.Windows\NativeShellKit.Windows.csproj" />
   </ItemGroup>
 </Project>

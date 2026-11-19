@@ -2,14 +2,22 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using NativeShellKit.Abstractions.Navigation;
+using NativeShellKit.Abstractions.Threading;
+using NativeShellKit.WinUI.Threading;
 using WinRT.Interop;
 
 namespace NativeShellKit.WinUI.Shell;
 
 public sealed class ShellWindowService : IShellWindowService
 {
+    private readonly WinUiDispatcherService? _dispatcher;
     private Window? _window;
     private AppWindow? _appWindow;
+
+    public ShellWindowService(IUiDispatcher? dispatcher = null)
+    {
+        _dispatcher = dispatcher as WinUiDispatcherService;
+    }
 
     public nint WindowHandle { get; private set; }
     public bool IsVisible { get; private set; }
@@ -17,6 +25,7 @@ public sealed class ShellWindowService : IShellWindowService
     public void AttachWindow(Window window, UIElement? titleBarElement = null)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
+        _dispatcher?.Attach(window.DispatcherQueue);
         WindowHandle = WindowNative.GetWindowHandle(window);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(WindowHandle);
         _appWindow = AppWindow.GetFromWindowId(windowId);

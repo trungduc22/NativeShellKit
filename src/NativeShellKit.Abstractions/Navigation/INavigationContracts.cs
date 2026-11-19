@@ -1,5 +1,17 @@
 namespace NativeShellKit.Abstractions.Navigation;
 
+public enum NavigationCachePolicy
+{
+    Cached,
+    Transient
+}
+
+public interface INavigationAware
+{
+    void OnNavigatedTo(object? parameter);
+    void OnNavigatedFrom();
+}
+
 public sealed record NavigationRouteDescriptor(
     string Route,
     string Title,
@@ -7,7 +19,8 @@ public sealed record NavigationRouteDescriptor(
     Func<object> ViewFactory,
     string? ModuleId = null,
     int Order = 0,
-    bool IsFooterItem = false);
+    bool IsFooterItem = false,
+    NavigationCachePolicy CachePolicy = NavigationCachePolicy.Cached);
 
 public sealed class NavigationEventArgs : EventArgs
 {

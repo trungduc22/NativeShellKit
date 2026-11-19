@@ -49,6 +49,10 @@ public sealed class DeveloperKitInstallerWizardForm : Form
     private Button _nextButton = null!;
     private Button _cancelButton = null!;
 
+    private static readonly string InstallerVersion = typeof(InstallerEngine).Assembly
+        .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion?
+        .Split('+')[0] ?? "0.2.0-alpha.1";
+
     public DeveloperKitInstallerWizardForm(
         string initialInstallDir,
         string payloadDir,
@@ -59,7 +63,7 @@ public sealed class DeveloperKitInstallerWizardForm : Form
         _skipDotNetRegistration = skipDotNetRegistration;
         _selfTestScreenshotsDir = selfTestScreenshotsDir;
 
-        Text = "NativeShellKit Developer Kit Setup (0.1.0-alpha.2)";
+        Text = $"NativeShellKit Developer Kit Setup ({InstallerVersion})";
         Size = new Size(760, 520);
         MinimumSize = new Size(680, 480);
         StartPosition = FormStartPosition.CenterScreen;
@@ -101,7 +105,7 @@ public sealed class DeveloperKitInstallerWizardForm : Form
 
         _headerSubtitle = new Label
         {
-            Text = "Windows 10/11 (x64) Native WinUI 3 SDK • Pre-release 0.1.0-alpha.2",
+            Text = $"Windows 10/11 (x64) Native WinUI 3 SDK • Pre-release {InstallerVersion}",
             ForeColor = Color.FromArgb(148, 163, 184),
             Font = new Font("Segoe UI", 9.5F),
             AutoSize = true,
@@ -182,7 +186,7 @@ public sealed class DeveloperKitInstallerWizardForm : Form
         {
             Text =
                 "This wizard installs the local NativeShellKit development environment:\n\n" +
-                "  • Signed/checksum-verified local NuGet package feed (13 packages, 0.1.0-alpha.2)\n" +
+                $"  • Signed/checksum-verified local NuGet package feed (13 packages, {InstallerVersion})\n" +
                 "  • nsk developer CLI & installable dotnet new nativeshellkit templates\n" +
                 "  • Three WinUI 3 reference samples (MinimalNativeApp, BackgroundCompanionApp, UnifiedHostDemo)\n" +
                 "  • Architecture, versioning, and per-app migration guides\n\n" +

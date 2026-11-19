@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using NativeShellKit.Abstractions.Identity;
+using NativeShellKit.Abstractions.Tray;
 using NativeShellKit.Windows.Interop;
 using NativeShellKit.Windows.SystemServices;
 
@@ -12,7 +13,7 @@ public sealed record TrayMenuItem(
     bool IsSeparator = false,
     bool IsEnabled = true);
 
-public sealed class NativeTrayService : IDisposable
+public sealed class NativeTrayService : ITrayService
 {
     private const uint TrayCallbackMessage = Win32Constants.WM_APP + 101;
     private const nuint SubclassId = 4102;
@@ -26,6 +27,7 @@ public sealed class NativeTrayService : IDisposable
     private nint _hwnd;
     private nint _hIcon;
     private uint _taskbarCreatedMessage;
+    private string _tooltipText;
     private bool _iconAdded;
     private bool _allowClose;
     private bool _disposed;
@@ -40,6 +42,7 @@ public sealed class NativeTrayService : IDisposable
         _interop = interop ?? Win32Interop.Default;
         _windowManager = windowManager ?? new WindowManagerService(_interop);
         _subclassDelegate = WindowSubclassCallback;
+        _tooltipText = _identity.DisplayName;
     }
 
     public bool IsIconActive => _iconAdded;
@@ -56,6 +59,20 @@ public sealed class NativeTrayService : IDisposable
         ArgumentNullException.ThrowIfNull(items);
         _menuItems.Clear();
         _menuItems.AddRange(items);
+    }
+
+    public void SetMenuItems(IEnumerable<TrayMenuDescriptor> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        _menuItems.Clear();
+        _menuItems.AddRange(items.Select(d => new TrayMenuItem(d.Id, d.Text, d.Callback, d.IsSeparator, d.IsEnabled)));
+    }
+
+    public void UpdateTooltip(string tooltip)
+    {
+        _tooltipText = string.IsNullOrWhiteSpace(tooltip) ? _identity.DisplayName : tooltip.Trim();
+        if (_iconAdded && _hwnd != nint.Zero && !_disposed)
+            AddOrUpdateTrayIcon();
     }
 
     public bool Initialize(nint ownerHwnd, string? iconPath = null)
@@ -171,7 +188,7 @@ public sealed class NativeTrayService : IDisposable
                  (_hIcon != nint.Zero ? Win32Constants.NIF_ICON : 0u),
         uCallbackMessage = TrayCallbackMessage,
         hIcon = _hIcon,
-        szTip = Truncate(_identity.DisplayName, 127),
+        szTip = Truncate(_tooltipText, 127),
         szInfo = string.Empty,
         szInfoTitle = string.Empty,
         guidItem = includeGuid ? _identity.TrayIconGuid : Guid.Empty

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.0-alpha.2",
+    [string]$Version = "",
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
     [string]$AdditionalNuGetSource = "",
@@ -10,6 +10,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+[xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot "Directory.Build.props") -Raw
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = [string]$buildProps.Project.PropertyGroup.Version
+}
 $devKitRoot = Join-Path $repoRoot "artifacts\developer-kit"
 $payloadDir = Join-Path $devKitRoot "payload"
 

@@ -30,12 +30,18 @@ public static class MicrosoftDependencyInjectionExtensions
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(services);
 
+        if (registry is IServiceCollectionBackedRegistry backed)
+        {
+            backed.TrackRawDescriptors(services);
+            return registry;
+        }
+
         foreach (var descriptor in services)
         {
             if (descriptor.IsKeyedService)
             {
                 throw new NotSupportedException(
-                    $"Keyed service '{descriptor.ServiceType.FullName}' is not supported by NativeShellKit.Hosting.ServiceContainer. Register via factory or Microsoft.Extensions.DependencyInjection directly.");
+                    $"Keyed service '{descriptor.ServiceType.FullName}' is not supported by custom registry '{registry.GetType().FullName}'.");
             }
 
             var lifetime = descriptor.Lifetime switch

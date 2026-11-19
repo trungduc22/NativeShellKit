@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.0-alpha.2",
+    [string]$Version = "",
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
     [string]$OutputDir = "",
@@ -10,6 +10,15 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+[xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot "Directory.Build.props") -Raw
+$propsVersion = [string]$buildProps.Project.PropertyGroup.Version
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = $propsVersion
+}
+if ($Version -ne $propsVersion) {
+    throw "The requested version ($Version) must match Directory.Build.props ($propsVersion)."
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $repoRoot "artifacts\packages"
 }
@@ -17,10 +26,6 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 if (Get-ChildItem -LiteralPath $OutputDir -Force | Select-Object -First 1) {
     throw "The package output directory is not empty. Choose a fresh directory to preserve immutable packages."
-}
-[xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot "Directory.Build.props") -Raw
-if ($Version -ne $buildProps.Project.PropertyGroup.Version) {
-    throw "The requested version must match Directory.Build.props."
 }
 
 $projects = @(

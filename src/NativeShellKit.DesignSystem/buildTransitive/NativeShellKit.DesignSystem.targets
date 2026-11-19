@@ -1,12 +1,32 @@
 <Project>
+  <Target Name="_IncludeNativeShellKitDesignSystemAssetsInPublish" BeforeTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_NskDesignSystemPublishXbf Include="$(MSBuildThisFileDirectory)..\lib\net10.0-windows10.0.19041\NativeShellKit.DesignSystem\**\*.xbf" />
+      <_NskDesignSystemPublishPri Include="$(MSBuildThisFileDirectory)..\lib\net10.0-windows10.0.19041\NativeShellKit.DesignSystem.pri" />
+      <ResolvedFileToPublish Include="@(_NskDesignSystemPublishXbf)">
+        <RelativePath>NativeShellKit.DesignSystem\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="@(_NskDesignSystemPublishPri)" Condition="Exists('%(_NskDesignSystemPublishPri.Identity)')">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
   <Target Name="_CopyNativeShellKitDesignSystemXbf" AfterTargets="Build;Publish">
     <ItemGroup>
       <_NskDesignSystemXbf Include="$(MSBuildThisFileDirectory)..\lib\net10.0-windows10.0.19041\NativeShellKit.DesignSystem\**\*.xbf" />
+      <_NskDesignSystemPri Include="$(MSBuildThisFileDirectory)..\lib\net10.0-windows10.0.19041\NativeShellKit.DesignSystem.pri" />
     </ItemGroup>
     <Copy SourceFiles="@(_NskDesignSystemXbf)"
           DestinationFiles="@(_NskDesignSystemXbf->'$(OutDir)NativeShellKit.DesignSystem\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           Condition="'@(_NskDesignSystemXbf)' != '' and '$(OutDir)' != ''" />
+    <Copy SourceFiles="@(_NskDesignSystemPri)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_NskDesignSystemPri)' != '' and Exists('@(_NskDesignSystemPri)') and '$(OutDir)' != ''" />
     <Copy SourceFiles="@(_NskDesignSystemXbf)"
           DestinationFiles="@(_NskDesignSystemXbf->'$(PublishDir)NativeShellKit.DesignSystem\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"

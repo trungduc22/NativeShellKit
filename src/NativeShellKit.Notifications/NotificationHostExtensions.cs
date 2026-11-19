@@ -19,8 +19,15 @@ public static class NotificationHostExtensions
         ArgumentNullException.ThrowIfNull(builder);
         return builder.ConfigureServices(services =>
         {
+            services.AddSingleton<JsonNotificationHistoryStore>(sp =>
+                new JsonNotificationHistoryStore(
+                    sp.GetRequiredService<AppIdentity>(),
+                    maxStoredRecords: 500,
+                    coalesceDiskWrites: true));
             services.AddSingleton<INotificationHistoryStore>(sp =>
-                new JsonNotificationHistoryStore(sp.GetRequiredService<AppIdentity>()));
+                sp.GetRequiredService<JsonNotificationHistoryStore>());
+            services.AddSingleton<ILifecycleHook>(sp =>
+                new NotificationHistoryFlushHook(sp.GetRequiredService<JsonNotificationHistoryStore>()));
 
             if (customPresenter is not null)
             {
@@ -56,5 +63,16 @@ public static class NotificationHostExtensions
                 return svc;
             });
         });
+    }
+
+    private sealed class NotificationHistoryFlushHook(JsonNotificationHistoryStore store) : ILifecycleHook
+    {
+        public int Order => -50;
+
+        public Task OnStartingAsync(AppStartupContext context, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task OnStoppingAsync(AppShutdownReason reason, CancellationToken ct = default) =>
+            store.FlushAsync(ct);
     }
 }

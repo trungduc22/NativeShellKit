@@ -161,7 +161,7 @@ public static class InstallerEngine
 
         string version = typeof(InstallerEngine).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?
-            .Split('+')[0] ?? "0.1.0-alpha.2";
+            .Split('+')[0] ?? "0.2.0-alpha.1";
 
         var manifest = new DeveloperKitManifest(
             version,

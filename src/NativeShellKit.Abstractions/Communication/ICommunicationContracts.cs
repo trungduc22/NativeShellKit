@@ -46,3 +46,12 @@ public interface IIpcClient : IAsyncDisposable
     Task<IpcCapabilitySet> HandshakeAsync(CancellationToken ct = default);
     Task<IpcEnvelope> SendAsync(string operation, string payloadJson = "{}", CancellationToken ct = default);
 }
+
+public interface ILocalPeerGrant
+{
+    string PipeName { get; }
+    Task GrantAsync(CancellationToken ct = default);
+    Task RevokeAsync(CancellationToken ct = default);
+    Task<IIpcServer?> OpenServerAsync(CancellationToken ct = default);
+    Task<IIpcClient?> OpenClientAsync(CancellationToken ct = default);
+}

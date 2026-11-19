@@ -12,7 +12,7 @@ namespace NativeShellKit.Communication.Ipc;
 
 internal static class IpcFraming
 {
-    public const int MaxPayloadBytes = 64 * 1024;
+    public const int MaxPayloadBytes = 256 * 1024;
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase

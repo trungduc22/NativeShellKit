@@ -164,4 +164,39 @@ public sealed class CommunicationAndModulesTests
         await host.StopAsync();
         Assert.Equal(["init:alpha", "init:beta", "stop:beta", "stop:alpha"], trace);
     }
+
+    [Fact]
+    public async Task SecurityAndIpc_BoundsNonceCache_Enforces256KiBLimit_AndSupportsILocalPeerGrant()
+    {
+        using var tmp = new TempRootScope("nsk-sec-v2");
+        var identity = new AppIdentity("secv2", "Sec V2", baseDataRoot: tmp.RootPath);
+        var key = Enumerable.Repeat((byte)0x5A, 32).ToArray();
+        var auth = new IpcAuthManager(identity, key);
+
+        var first = auth.CreateSignedEnvelope("op", "{}");
+        Assert.True(auth.VerifyEnvelope(first));
+        for (int i = 0; i < 1200; i++)
+        {
+            var env = auth.CreateSignedEnvelope("op", "{}");
+            Assert.True(auth.VerifyEnvelope(env));
+        }
+
+        // Most recent nonce is still tracked against replay even after pruning
+        var latest = auth.CreateSignedEnvelope("op", "{}");
+        Assert.True(auth.VerifyEnvelope(latest));
+        Assert.False(auth.VerifyEnvelope(latest));
+
+        ILocalPeerGrant grant = new LocalPeerGrant(identity);
+        await grant.GrantAsync();
+        await using var server = await grant.OpenServerAsync();
+        Assert.NotNull(server);
+        server!.RegisterAllowedHandler("echo", (req, _) => Task.FromResult(req with { Operation = "ECHO_OK" }));
+        await server.StartAsync();
+
+        await using var client = await grant.OpenClientAsync();
+        Assert.NotNull(client);
+        var oversized = new string('x', 260 * 1024);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client!.SendAsync("echo", oversized));
+        await grant.RevokeAsync();
+    }
 }

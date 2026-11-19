@@ -1,5 +1,6 @@
 using NativeShellKit.Abstractions.DependencyInjection;
 using NativeShellKit.Abstractions.Identity;
+using NativeShellKit.Abstractions.Windows;
 using NativeShellKit.Windows.Interop;
 using NativeShellKit.Windows.Platform;
 using NativeShellKit.Windows.SingleInstance;
@@ -25,7 +26,9 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<ProcessLaunchService, ProcessLaunchService>();
         services.AddSingleton<NetworkAndPowerMonitor, NetworkAndPowerMonitor>();
         services.AddSingleton<SingleInstanceCoordinator>(sp => new SingleInstanceCoordinator(sp.GetRequiredService<AppIdentity>()));
+        services.AddSingleton<ISingleInstanceService>(sp => sp.GetRequiredService<SingleInstanceCoordinator>());
         services.AddSingleton<WindowsStartupService>(sp => new WindowsStartupService(sp.GetRequiredService<AppIdentity>(), startupBackend));
+        services.AddSingleton<IStartupService>(sp => sp.GetRequiredService<WindowsStartupService>());
         return services;
     }
 }

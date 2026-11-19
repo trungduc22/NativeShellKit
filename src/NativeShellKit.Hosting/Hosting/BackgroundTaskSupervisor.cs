@@ -7,7 +7,7 @@ namespace NativeShellKit.Hosting.Hosting;
 public sealed class BackgroundTaskSupervisor : IBackgroundTaskSupervisor
 {
     private readonly CancellationTokenSource _shutdownCts = new();
-    private readonly ConcurrentDictionary<Guid, Task> _runningTasks = new();
+    private readonly ConcurrentDictionary<Guid, (string Name, Task Task)> _runningTasks = new();
     private readonly ISdkLogger? _logger;
     private bool _disposed;
 
@@ -20,12 +20,19 @@ public sealed class BackgroundTaskSupervisor : IBackgroundTaskSupervisor
 
     public int ActiveTaskCount => _runningTasks.Count;
 
+    public IReadOnlyCollection<string> ActiveTaskNames =>
+        _runningTasks.Values
+            .Select(v => v.Name)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
     public Task RunSupervisedAsync(string taskName, Func<CancellationToken, Task> work)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
         ArgumentNullException.ThrowIfNull(work);
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        var trimmedName = taskName.Trim();
         var id = Guid.NewGuid();
         var task = Task.Run(async () =>
         {
@@ -39,8 +46,8 @@ public sealed class BackgroundTaskSupervisor : IBackgroundTaskSupervisor
             }
             catch (Exception ex)
             {
-                _logger?.Log(SdkLogLevel.Error, "BackgroundTaskSupervisor", $"Supervised task '{taskName}' failed.", ex);
-                TaskFailed?.Invoke(taskName, ex);
+                _logger?.Log(SdkLogLevel.Error, "BackgroundTaskSupervisor", $"Supervised task '{trimmedName}' failed.", ex);
+                TaskFailed?.Invoke(trimmedName, ex);
             }
             finally
             {
@@ -48,8 +55,29 @@ public sealed class BackgroundTaskSupervisor : IBackgroundTaskSupervisor
             }
         }, _shutdownCts.Token);
 
-        _runningTasks[id] = task;
+        _runningTasks[id] = (trimmedName, task);
         return task;
+    }
+
+    public Task RunSupervisedLoopAsync(
+        string taskName,
+        TimeSpan interval,
+        Func<CancellationToken, Task> iteration,
+        bool runImmediately = true)
+    {
+        ArgumentNullException.ThrowIfNull(iteration);
+        var effectiveInterval = interval > TimeSpan.Zero ? interval : TimeSpan.FromSeconds(1);
+        return RunSupervisedAsync(taskName, async ct =>
+        {
+            if (runImmediately && !ct.IsCancellationRequested)
+                await iteration(ct).ConfigureAwait(false);
+
+            using var timer = new PeriodicTimer(effectiveInterval);
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                await iteration(ct).ConfigureAwait(false);
+            }
+        });
     }
 
     public async Task StopAllAsync(TimeSpan timeout)
@@ -57,7 +85,7 @@ public sealed class BackgroundTaskSupervisor : IBackgroundTaskSupervisor
         if (!_shutdownCts.IsCancellationRequested)
             _shutdownCts.Cancel();
 
-        var snapshot = _runningTasks.Values.ToArray();
+        var snapshot = _runningTasks.Values.Select(v => v.Task).ToArray();
         if (snapshot.Length == 0)
             return;
 
