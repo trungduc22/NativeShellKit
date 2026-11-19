@@ -173,6 +173,7 @@ public sealed partial class ShellTitleBar : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         HookXamlRoot();
+        UpdateResponsiveVisibility(ActualWidth);
         UpdateCaptionInsetsAndPassthroughRegions();
     }
 
@@ -188,12 +189,24 @@ public sealed partial class ShellTitleBar : UserControl
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        UpdateResponsiveVisibility(e.NewSize.Width);
         UpdateCaptionInsetsAndPassthroughRegions();
     }
 
     private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
     {
+        UpdateResponsiveVisibility(ActualWidth);
         UpdateCaptionInsetsAndPassthroughRegions();
+    }
+
+    private void UpdateResponsiveVisibility(double width)
+    {
+        bool hasSubtitle = !string.IsNullOrWhiteSpace(Subtitle);
+        bool showSubtitle = hasSubtitle && (width <= 0 || width >= 760);
+        SubtitleTextBlock.Visibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed;
+
+        bool hideCenter = width > 0 && width < 680;
+        CenterSlotPresenter.Visibility = hideCenter ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void HookXamlRoot()
@@ -307,7 +320,6 @@ public sealed partial class ShellTitleBar : UserControl
     {
         TitleTextBlock.Text = Title ?? string.Empty;
         SubtitleTextBlock.Text = Subtitle ?? string.Empty;
-        SubtitleTextBlock.Visibility = string.IsNullOrWhiteSpace(Subtitle) ? Visibility.Collapsed : Visibility.Visible;
 
         if (IconSource is not null)
         {
@@ -334,6 +346,7 @@ public sealed partial class ShellTitleBar : UserControl
         CenterSlotPresenter.Content = CenterContent;
         StatusSlotPresenter.Content = StatusContent;
         RightSlotPresenter.Content = RightContent;
+        UpdateResponsiveVisibility(ActualWidth);
     }
 
     private static void OnTitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -347,7 +360,7 @@ public sealed partial class ShellTitleBar : UserControl
         var ctl = (ShellTitleBar)d;
         var val = e.NewValue as string;
         ctl.SubtitleTextBlock.Text = val ?? string.Empty;
-        ctl.SubtitleTextBlock.Visibility = string.IsNullOrWhiteSpace(val) ? Visibility.Collapsed : Visibility.Visible;
+        ctl.UpdateResponsiveVisibility(ctl.ActualWidth);
     }
 
     private static void OnIconChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

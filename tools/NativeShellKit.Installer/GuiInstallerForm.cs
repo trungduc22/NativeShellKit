@@ -52,7 +52,7 @@ public sealed class DeveloperKitInstallerWizardForm : Form
 
     private static readonly string InstallerVersion = typeof(InstallerEngine).Assembly
         .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion?
-        .Split('+')[0] ?? "0.2.0-alpha.2";
+        .Split('+')[0] ?? "0.2.0-alpha.3";
 
     public DeveloperKitInstallerWizardForm(
         string initialInstallDir,

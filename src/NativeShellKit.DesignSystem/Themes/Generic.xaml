@@ -14,6 +14,7 @@
     <!-- StatusBadge -->
     <Style TargetType="controls:StatusBadge">
         <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
@@ -109,8 +110,10 @@
                                 VerticalAlignment="Center" />
                             <ProgressRing
                                 x:Name="SyncRing"
-                                Width="10"
-                                Height="10"
+                                MinWidth="12"
+                                MinHeight="12"
+                                Width="12"
+                                Height="12"
                                 IsActive="False"
                                 Visibility="Collapsed"
                                 VerticalAlignment="Center" />

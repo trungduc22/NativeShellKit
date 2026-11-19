@@ -235,7 +235,7 @@ public sealed partial class MainWindow : Window
         stack.Children.Add(new PageHeader
         {
             Title = host.Identity.DisplayName,
-            Subtitle = "Fluent 2 NativeShellFrame host powered by NativeShellKit 0.2.0-alpha.2 NuGet packages",
+            Subtitle = "Fluent 2 NativeShellFrame host powered by NativeShellKit 0.2.0-alpha.3 NuGet packages",
             BadgeState = ShellStatusKind.Healthy,
             BadgeLabel = host.Identity.Version,
             ActionsContent = confirmBtn
@@ -292,7 +292,7 @@ public sealed partial class MainWindow : Window
             Title = "Design System 2.0 Showcase",
             Subtitle = "Templated controls with 100% DependencyProperty & VisualState backing",
             BadgeState = ShellStatusKind.Active,
-            BadgeLabel = "0.2.0-alpha.2"
+            BadgeLabel = "0.2.0-alpha.3"
         });
 
         stack.Children.Add(new SearchBox { Placeholder = "Filter components...", ShortcutHint = "Ctrl+K" });
