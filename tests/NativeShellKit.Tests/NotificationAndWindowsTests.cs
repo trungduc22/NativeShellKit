@@ -24,8 +24,8 @@ public sealed class NotificationAndWindowsTests
         NativeNotificationSubmissionStatus subStatus = NativeNotificationSubmissionStatus.SubmittedToPlatform,
         string? errorMsg = null) : INativeNotificationPresenter
     {
-        public bool IsRegistered => regStatus == NativeNotificationRegistrationStatus.Registered;
         public NativeNotificationRegistrationStatus RegistrationStatus { get; } = regStatus;
+        public bool IsRegistered => RegistrationStatus == NativeNotificationRegistrationStatus.Registered;
         public string? RegistrationError { get; } = regStatus == NativeNotificationRegistrationStatus.Failed ? errorMsg : null;
         public List<(string AppId, string Id, string Args)> Presented { get; } = [];
 
