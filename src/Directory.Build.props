@@ -1,0 +1,10 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- Validate NuGet package structure and binary compatibility for SDK libraries -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- Baseline comparison activates once 0.2.0-alpha.4 is published to GitHub Packages -->
+    <PackageValidationBaselineVersion Condition="'$(EnablePackageValidationBaseline)' == 'true' and '$(PackageValidationBaselineVersion)' == ''">0.2.0-alpha.4</PackageValidationBaselineVersion>
+  </PropertyGroup>
+</Project>

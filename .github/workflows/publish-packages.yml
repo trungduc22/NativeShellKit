@@ -1,0 +1,121 @@
+name: Publish NativeShellKit Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack and validate without pushing to GitHub Packages'
+        required: false
+        type: boolean
+        default: true
+      notify_consumers:
+        description: 'Send repository_dispatch (nativeshellkit-released) to consumer repositories'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  pack-validate-publish:
+    runs-on: windows-latest
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Validate version matches git tag
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $sdkVer = [string]$props.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($sdkVer)) {
+            throw "Version is missing from Directory.Build.props."
+          }
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tagVer = "${{ github.ref_name }}" -replace '^v', ''
+            if ($tagVer -ne $sdkVer) {
+              throw "Tag version '$tagVer' does not match Directory.Build.props Version '$sdkVer'."
+            }
+          }
+          "SDK_VERSION=$sdkVer" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "sdk_version=$sdkVer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Validated NativeShellKit version: $sdkVer"
+
+      - name: Pack NuGet packages and templates
+        shell: pwsh
+        run: |
+          .\packaging\Pack-NuGet.ps1 -Version $env:SDK_VERSION -Configuration Release -Platform x64
+
+      - name: Restore and build complete solution (Release|x64)
+        run: |
+          dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="${{ github.workspace }}\artifacts\packages"
+          dotnet build NativeShellKit.sln -c Release -p:Platform=x64 --no-restore
+
+      - name: Run automated test suite
+        run: |
+          dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"
+
+      - name: Run sample self-tests
+        shell: cmd
+        run: |
+          samples\MinimalNativeApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\MinimalNativeApp.exe --self-test || exit /b 1
+          samples\BackgroundCompanionApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\BackgroundCompanionApp.exe --self-test || exit /b 1
+          samples\UnifiedHostDemo\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\UnifiedHostDemo.exe --self-test || exit /b 1
+
+      - name: Push immutable NuGet packages to GitHub Packages
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        shell: pwsh
+        run: |
+          $source = "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          $packages = Get-ChildItem -Path artifacts\packages -Filter "NativeShellKit.*.nupkg" | Sort-Object Name
+          foreach ($pkg in $packages) {
+            Write-Host "Pushing $($pkg.Name) to $source..."
+            dotnet nuget push $pkg.FullName --source $source --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload package checksums and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeShellKit-release-packages-${{ env.SDK_VERSION }}
+          path: |
+            artifacts/packages/SHA256SUMS.txt
+            artifacts/packages/manifest.json
+          if-no-files-found: error
+
+    outputs:
+      sdk_version: ${{ steps.version.outputs.sdk_version }}
+
+  notify-consumers:
+    needs: pack-validate-publish
+    if: ${{ (github.event_name == 'push' || (inputs.dry_run == false && inputs.notify_consumers == true)) && secrets.ECOSYSTEM_DISPATCH_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch nativeshellkit-released event to consumer repositories
+        env:
+          GH_TOKEN: ${{ secrets.ECOSYSTEM_DISPATCH_TOKEN }}
+          SDK_VERSION: ${{ needs.pack-validate-publish.outputs.sdk_version }}
+        run: |
+          for repo in HiberDesk GhostCode BackThread ed-local-ai; do
+            echo "Dispatching nativeshellkit-released ($SDK_VERSION) to ${{ github.repository_owner }}/$repo"
+            gh api "repos/${{ github.repository_owner }}/$repo/dispatches" \
+              -f event_type="nativeshellkit-released" \
+              -f client_payload[version]="$SDK_VERSION" || echo "Warning: dispatch to $repo failed"
+          done

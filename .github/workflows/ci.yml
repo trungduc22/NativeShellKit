@@ -2,7 +2,7 @@ name: NativeShellKit CI
 
 on:
   push:
-    branches: [ main, migration/m12-sdk, 'convergence/*' ]
+    branches: [ main, migration/m12-sdk, 'convergence/*', 'eco/**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:

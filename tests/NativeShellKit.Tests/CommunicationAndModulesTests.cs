@@ -124,6 +124,12 @@ public sealed class CommunicationAndModulesTests
         first.RegisterAllowedHandler("status", (request, _) => Task.FromResult(request with { Operation = "ok" }));
         await first.StartAsync();
         Assert.Equal("ok", (await originalClient.SendAsync("status")).Operation);
+        var ecoCaps = await originalClient.GetEcosystemCapabilitiesAsync();
+        Assert.Equal(identity.AppId, ecoCaps.AppId);
+        Assert.Equal(identity.Version, ecoCaps.Version);
+        Assert.Equal(IpcProtocolVersion.Current, ecoCaps.ProtocolVersion);
+        Assert.Contains("status", ecoCaps.SupportedOperations);
+        Assert.Contains(EcosystemIpcOperations.Capabilities, ecoCaps.SupportedOperations);
         Assert.Contains("FORBIDDEN", (await originalClient.SendAsync("unlisted")).PayloadJson);
         await first.StopAsync();
         await grant.RevokeAsync();
@@ -134,6 +140,7 @@ public sealed class CommunicationAndModulesTests
         await using var second = Assert.IsType<NamedPipeIpcServer>(await grant.OpenServerAsync());
         await second.StartAsync();
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => originalClient.SendAsync("status"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => originalClient.GetEcosystemCapabilitiesAsync());
     }
 
     [Fact]

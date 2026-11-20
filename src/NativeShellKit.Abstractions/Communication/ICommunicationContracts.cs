@@ -5,9 +5,20 @@ public static class IpcProtocolVersion
     public const string Current = "1.0";
 }
 
+public static class EcosystemIpcOperations
+{
+    public const string Capabilities = "ecosystem.capabilities";
+}
+
 public sealed record IpcCapabilitySet(
     string ProtocolVersion,
     string AppId,
+    string[] SupportedOperations);
+
+public sealed record EcosystemCapabilityDescriptor(
+    string AppId,
+    string Version,
+    string ProtocolVersion,
     string[] SupportedOperations);
 
 public sealed record IpcEnvelope(
@@ -44,6 +55,7 @@ public interface IIpcClient : IAsyncDisposable
 {
     string PipeName { get; }
     Task<IpcCapabilitySet> HandshakeAsync(CancellationToken ct = default);
+    Task<EcosystemCapabilityDescriptor> GetEcosystemCapabilitiesAsync(CancellationToken ct = default);
     Task<IpcEnvelope> SendAsync(string operation, string payloadJson = "{}", CancellationToken ct = default);
 }
 

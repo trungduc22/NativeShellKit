@@ -18,11 +18,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
-    <PackageReference Include="NativeShellKit.Abstractions" Version="0.2.0-alpha.3" />
-    <PackageReference Include="NativeShellKit.Hosting" Version="0.2.0-alpha.3" />
-    <PackageReference Include="NativeShellKit.Windows" Version="0.2.0-alpha.3" />
-    <PackageReference Include="NativeShellKit.WinUI" Version="0.2.0-alpha.3" />
-    <PackageReference Include="NativeShellKit.DesignSystem" Version="0.2.0-alpha.3" />
-    <PackageReference Include="NativeShellKit.Diagnostics" Version="0.2.0-alpha.3" />
+    <PackageReference Include="NativeShellKit.Abstractions" Version="0.2.0-alpha.4" />
+    <PackageReference Include="NativeShellKit.Hosting" Version="0.2.0-alpha.4" />
+    <PackageReference Include="NativeShellKit.Windows" Version="0.2.0-alpha.4" />
+    <PackageReference Include="NativeShellKit.WinUI" Version="0.2.0-alpha.4" />
+    <PackageReference Include="NativeShellKit.DesignSystem" Version="0.2.0-alpha.4" />
+    <PackageReference Include="NativeShellKit.Diagnostics" Version="0.2.0-alpha.4" />
   </ItemGroup>
 </Project>

@@ -65,9 +65,9 @@ Every migration milestone MUST pass automated byte/hash preservation checks on e
 
 ## 4. BackThread Strict Isolation Requirements
 
-BackThread **remains 100% independent** and MUST NOT depend on `NativeShellKit.*`, `Microsoft.WindowsAppSDK`, or WinUI 3:
+`BackThread.Host.Core` (USB/usbmuxd, iOS/BTH1, WASAPI audio, MediaRouter, Spotify PKCE) **remains 100% independent** and MUST NOT depend on `NativeShellKit.*`, `Microsoft.WindowsAppSDK`, or WinUI 3. The outer Windows shell (`BackThread.Daemon` and `BackThread.App`) consumes `NativeShellKit.*` via pinned NuGet packages without routing USB, iOS, or real-time audio through the SDK:
 
-1. **Domain Ownership:** BackThread exclusively owns USB/usbmuxd transport, iOS native app & BTH1 wire protocol, WASAPI loopback & real-time PCM audio streaming, Hybrid MediaRouter, Spotify PKCE, `BackThread.Host.Core` (`codex/native-foundation`), and standalone CLI/WinForms Tray host.
+1. **Domain Ownership:** BackThread exclusively owns USB/usbmuxd transport, iOS native app & BTH1 wire protocol, WASAPI loopback & real-time PCM audio streaming, Hybrid MediaRouter, Spotify PKCE, `BackThread.Host.Core`, and the Daemon/App shell.
 2. **Contract-Only Integration Boundary:** Communication with HiberDesk is strictly limited to `docs/HIBERDESK_BRIDGE.md`:
    - Opt-in listener (`enableHiberDeskBridge: true` or `--hiberdesk` flag).
    - Same-user named pipe `BackThread.HiberDesk.v1.<WindowsSID>.<ApiPort>` with `X-BackThread-Bridge: 1`.

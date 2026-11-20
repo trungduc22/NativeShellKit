@@ -195,6 +195,17 @@ public sealed class NamedPipeIpcServer : IIpcServer
             return _auth.CreateSignedEnvelope("HANDSHAKE_OK", JsonSerializer.Serialize(caps, IpcFraming.JsonOptions));
         }
 
+        if (string.Equals(req.Operation, EcosystemIpcOperations.Capabilities, StringComparison.OrdinalIgnoreCase))
+        {
+            var ops = AllowedOperations
+                .Append(EcosystemIpcOperations.Capabilities)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(static op => op, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var descriptor = new EcosystemCapabilityDescriptor(_identity.AppId, _identity.Version, IpcProtocolVersion.Current, ops);
+            return _auth.CreateSignedEnvelope("ECOSYSTEM_CAPABILITIES_OK", JsonSerializer.Serialize(descriptor, IpcFraming.JsonOptions));
+        }
+
         if (!_allowedHandlers.TryGetValue(req.Operation, out var handler))
         {
             return _auth.CreateSignedEnvelope("ERROR", JsonSerializer.Serialize(new { error = "FORBIDDEN", operation = req.Operation }, IpcFraming.JsonOptions));
@@ -235,6 +246,13 @@ public sealed class NamedPipeIpcClient : IIpcClient
         var resp = await SendAsync(NamedPipeIpcServer.HandshakeOperation, "{}", ct).ConfigureAwait(false);
         return JsonSerializer.Deserialize<IpcCapabilitySet>(resp.PayloadJson, IpcFraming.JsonOptions)
             ?? throw new InvalidOperationException("Invalid IPC capability handshake response.");
+    }
+
+    public async Task<EcosystemCapabilityDescriptor> GetEcosystemCapabilitiesAsync(CancellationToken ct = default)
+    {
+        var resp = await SendAsync(EcosystemIpcOperations.Capabilities, "{}", ct).ConfigureAwait(false);
+        return JsonSerializer.Deserialize<EcosystemCapabilityDescriptor>(resp.PayloadJson, IpcFraming.JsonOptions)
+            ?? throw new InvalidOperationException("Invalid ecosystem capability response.");
     }
 
     public async Task<IpcEnvelope> SendAsync(string operation, string payloadJson = "{}", CancellationToken ct = default)
