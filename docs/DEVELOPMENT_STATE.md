@@ -54,4 +54,4 @@
 
 ## Next Concrete Task
 
-Monitor GitHub Actions CI run for M11 on `https://github.com/trungduc22/NativeShellKit/actions` and maintain pre-release (`0.1.0-alpha.1`) hardening.
+Monitor GitHub Actions CI for `NativeShellKit` (`main`) and the first live consumer `BackThread` (`BackThread.Daemon` + `BackThread.App` on `BackThread.Desktop.sln`), and continue `0.1.0-alpha.1` hardening based on real desktop usage.
