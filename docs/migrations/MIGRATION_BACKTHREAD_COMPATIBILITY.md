@@ -38,3 +38,10 @@ var builder = NativeShellHostBuilder.Create(identity, args)
 ```
 
 This lets `BackThread` adopt unified settings, DPAPI secret storage, redacted logging, single-instance coordination, and authenticated named-pipe IPC while keeping its existing desktop UI and cross-platform architecture intact.
+
+## Implemented 2-Process Architecture in `BackThread` (`0.3.0`)
+
+`BackThread` now ships two decoupled desktop processes built on `NativeShellKit` (`BackThread.Desktop.sln`):
+
+1. **`BackThread.Daemon`** (`src/Windows/Daemon/`): Always-on headless background host + Win32 tray (`NativeTrayService` over a hidden `TrayMessageWindow`) + `DpapiSecretStore` + `SingleInstanceCoordinator` + HMAC-authenticated `NamedPipeIpcServer` (28 allowlisted operations). References **only** non-UI `NativeShellKit` packages (zero `Microsoft.WindowsAppSDK` dependency; builds and runs its IPC `--smoke-test` cleanly on both Linux and Windows).
+2. **`BackThread.App`** (`src/Windows/App/`): On-demand WinUI 3 Fluent dashboard (`NativeShellView`, Mica/Acrylic `WinUiThemeService`, `DesignSystem` controls, `INotificationService`, `WindowsStartupService`, `IDiagnosticsService`) communicating exclusively with `BackThread.Daemon` over the shared `AppIdentity("backthread", "BackThread", "trungduc22", "0.3.0")` HMAC Named Pipe. Closing the dashboard window exits the WinUI process completely (0 MB idle UI RAM) while `BackThread.Daemon` remains active in the system tray.
