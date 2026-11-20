@@ -105,7 +105,7 @@ jobs:
 
   notify-consumers:
     needs: pack-validate-publish
-    if: ${{ (github.event_name == 'push' || (inputs.dry_run == false && inputs.notify_consumers == true)) && secrets.ECOSYSTEM_DISPATCH_TOKEN != '' }}
+    if: ${{ github.event_name == 'push' || (inputs.dry_run == false && inputs.notify_consumers == true) }}
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch nativeshellkit-released event to consumer repositories
@@ -113,6 +113,10 @@ jobs:
           GH_TOKEN: ${{ secrets.ECOSYSTEM_DISPATCH_TOKEN }}
           SDK_VERSION: ${{ needs.pack-validate-publish.outputs.sdk_version }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "ECOSYSTEM_DISPATCH_TOKEN is not configured; skipping repository_dispatch."
+            exit 0
+          fi
           for repo in HiberDesk GhostCode BackThread ed-local-ai; do
             echo "Dispatching nativeshellkit-released ($SDK_VERSION) to ${{ github.repository_owner }}/$repo"
             gh api "repos/${{ github.repository_owner }}/$repo/dispatches" \
