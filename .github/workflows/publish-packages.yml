@@ -68,6 +68,11 @@ jobs:
           dotnet restore NativeShellKit.sln -p:RestoreAdditionalProjectSources="${{ github.workspace }}\artifacts\packages"
           dotnet build NativeShellKit.sln -c Release -p:Platform=x64 --no-restore
 
+      - name: Build Developer Kit
+        shell: powershell
+        run: |
+          .\packaging\Build-DeveloperKit.ps1 -Version $env:SDK_VERSION -Configuration Release -Platform x64
+
       - name: Run automated test suite
         run: |
           dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"
