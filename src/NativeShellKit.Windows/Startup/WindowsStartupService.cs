@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using NativeShellKit.Abstractions.Identity;
+using NativeShellKit.Abstractions.Windows;
 
 namespace NativeShellKit.Windows.Startup;
 
@@ -47,7 +48,7 @@ public sealed class InMemoryStartupRegistryBackend : IStartupRegistryBackend
         _entries.Remove(valueName);
 }
 
-public sealed class WindowsStartupService
+public sealed class WindowsStartupService : IStartupService
 {
     private readonly AppIdentity _identity;
     private readonly IStartupRegistryBackend _backend;
@@ -68,7 +69,7 @@ public sealed class WindowsStartupService
 
     public void Enable(string executablePath, bool startMinimized = false)
     {
-        var command = FormatStartupCommand(executablePath, startMinimized);
+        var command = FormatStartupCommand(executablePath, startMinimized, _identity.EffectiveStartupArguments);
         _backend.WriteValue(RegistryValueName, command);
     }
 
@@ -77,14 +78,18 @@ public sealed class WindowsStartupService
         _backend.DeleteValue(RegistryValueName);
     }
 
-    public static string FormatStartupCommand(string executablePath, bool startMinimized = false)
+    public static string FormatStartupCommand(string executablePath, bool startMinimized = false) =>
+        FormatStartupCommand(executablePath, startMinimized, "--autostart");
+
+    public static string FormatStartupCommand(string executablePath, bool startMinimized, string? startupArguments)
     {
         if (string.IsNullOrWhiteSpace(executablePath))
             throw new ArgumentException("Executable path cannot be empty.", nameof(executablePath));
 
         var fullPath = Path.GetFullPath(executablePath.Trim());
+        var baseArgs = string.IsNullOrWhiteSpace(startupArguments) ? "--autostart" : startupArguments.Trim();
         return startMinimized
-            ? $"\"{fullPath}\" --autostart --minimized"
-            : $"\"{fullPath}\" --autostart";
+            ? $"\"{fullPath}\" {baseArgs} --minimized"
+            : $"\"{fullPath}\" {baseArgs}";
     }
 }

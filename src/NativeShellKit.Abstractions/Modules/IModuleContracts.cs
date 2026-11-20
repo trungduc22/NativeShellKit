@@ -30,9 +30,29 @@ public interface IModuleContext
     string ModuleDataDirectory { get; }
 }
 
+public enum ModuleHealthState
+{
+    Uninitialized,
+    Starting,
+    Healthy,
+    Degraded,
+    Disabled,
+    Faulted,
+    Stopped
+}
+
+public sealed record ModuleHealthSnapshot(
+    string ModuleId,
+    ModuleHealthState State,
+    string? ErrorMessage = null,
+    DateTimeOffset? UpdatedUtc = null);
+
 public interface IShellModule
 {
     ModuleDescriptor Descriptor { get; }
+    int StartupOrder => 100;
+    bool IsCritical => false;
+    IReadOnlyList<string> DependsOnModuleIds => Array.Empty<string>();
     void RegisterServices(IServiceRegistry services);
     IReadOnlyList<ModuleNavigationItem> GetNavigationItems();
     IReadOnlyList<ModuleCommandDescriptor> GetCommands();
@@ -47,4 +67,6 @@ public interface IModuleCatalog
     IReadOnlyList<ModuleCommandDescriptor> GetAllCommands();
     IShellModule? FindModule(string moduleId);
     Task<bool> ExecuteCommandAsync(string commandId, IServiceProvider services, CancellationToken ct = default);
+    IReadOnlyList<ModuleHealthSnapshot> GetHealthSnapshots() => Array.Empty<ModuleHealthSnapshot>();
+    ModuleHealthSnapshot? GetHealthSnapshot(string moduleId) => null;
 }

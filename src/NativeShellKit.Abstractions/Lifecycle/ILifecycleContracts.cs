@@ -47,11 +47,25 @@ public interface ILifecycleHook
     Task OnStoppingAsync(AppShutdownReason reason, CancellationToken ct = default);
 }
 
+public sealed record HostBuildOptions(
+    bool ValidateScopes = true,
+    bool ValidateOnBuild = false);
+
 public interface IBackgroundTaskSupervisor : IAsyncDisposable
 {
     event Action<string, Exception>? TaskFailed;
     int ActiveTaskCount { get; }
+    IReadOnlyCollection<string> ActiveTaskNames => Array.Empty<string>();
     Task RunSupervisedAsync(string taskName, Func<CancellationToken, Task> work);
+    Task RunSupervisedLoopAsync(string taskName, TimeSpan interval, Func<CancellationToken, Task> iteration, bool runImmediately = true) =>
+        RunSupervisedAsync(taskName, async ct =>
+        {
+            if (runImmediately && !ct.IsCancellationRequested)
+                await iteration(ct).ConfigureAwait(false);
+            using var timer = new PeriodicTimer(interval > TimeSpan.Zero ? interval : TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+                await iteration(ct).ConfigureAwait(false);
+        });
     Task StopAllAsync(TimeSpan timeout);
 }
 

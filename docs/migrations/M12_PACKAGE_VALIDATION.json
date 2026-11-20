@@ -1,0 +1,102 @@
+{
+  "version": "0.1.0-alpha.2",
+  "baselineCommit": "89147f1058f853eb423624d468780aab1e064e65",
+  "packages": [
+    {
+      "sha256": "bd6a84f16469ed296de4b9675ef6dd72cdef649136a9245c22a82351a7e48074",
+      "sizeBytes": 34704,
+      "fileName": "NativeShellKit.Abstractions.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "3082a4a230de9f8f1d8b4c7336af5f115c5c872ce31927f9f7e17e9e87bc6353",
+      "sizeBytes": 9081,
+      "fileName": "NativeShellKit.Build.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "371191ab3638886acd7bae026d867ad63f6be3fbb7f1ab688119e0f1b8ba8ee4",
+      "sizeBytes": 15976,
+      "fileName": "NativeShellKit.Communication.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "2d3bfad46076b9610774af00de1b20d6b20c79290585c61e87204be663bf4d39",
+      "sizeBytes": 41673,
+      "fileName": "NativeShellKit.DesignSystem.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "c71ec363723018bf7b40ac32b541d8a6a1e3ec857549ec8ffdbbe87474280934",
+      "sizeBytes": 8725,
+      "fileName": "NativeShellKit.DevTools.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "b173fba1d1d8c379e3862b006cb47eb6f4131a8b6cad99af8f1db48c901a95e5",
+      "sizeBytes": 11274,
+      "fileName": "NativeShellKit.Diagnostics.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "aaa05e833b3b8c8d8accd8d97117632a1e77b551003651763c3e2bd07a625bfc",
+      "sizeBytes": 21128,
+      "fileName": "NativeShellKit.Hosting.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "f1c7b0b9bcfb9a572d1bb1765abf5fb0caed32b46ada60ed4b03ce381a3b8e08",
+      "sizeBytes": 19081,
+      "fileName": "NativeShellKit.Notifications.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "6de38baef5ca09e16b6952a88edcd11013d53ff451ee7343e2000c845970818d",
+      "sizeBytes": 15465,
+      "fileName": "NativeShellKit.Security.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "c6cf344a5aa723fc21004183d680d5020a7b213003d334c225113dde74ee86eb",
+      "sizeBytes": 8481,
+      "fileName": "NativeShellKit.Templates.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "9be05a7a77df1b6ecf13b1f6e5f1ce224add8c13ac480a558b8aab59a2bd5aa6",
+      "sizeBytes": 9248,
+      "fileName": "NativeShellKit.Tray.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "cfc9959dd206ba4cc3abed1fc7d60848c538b01515035769f889ad2e034f2654",
+      "sizeBytes": 20488,
+      "fileName": "NativeShellKit.Windows.0.1.0-alpha.2.nupkg"
+    },
+    {
+      "sha256": "cbc987dec4a08cba71213d45e5dc05f81a46c3d396dd9b3fdbc762cd82cda0b7",
+      "sizeBytes": 38558,
+      "fileName": "NativeShellKit.WinUI.0.1.0-alpha.2.nupkg"
+    }
+  ],
+  "consumer": [
+    {
+      "package": "NativeShellKit.Abstractions/0.1.0-alpha.2",
+      "deployedDllSha256": "838c740b2fb9a595d04352547bbeeb9307322d5d1a1f388009c96680cb5fa256"
+    },
+    {
+      "package": "NativeShellKit.DesignSystem/0.1.0-alpha.2",
+      "deployedDllSha256": "4b11decfd240586c399123f63726bfdf88a530ffb5f3e16024f88f69309320a6"
+    },
+    {
+      "package": "NativeShellKit.Diagnostics/0.1.0-alpha.2",
+      "deployedDllSha256": "976a2a3b4d181f042db06b552e086e258152e7fe2fb94db3e941d1a3c5ea1a87"
+    },
+    {
+      "package": "NativeShellKit.Hosting/0.1.0-alpha.2",
+      "deployedDllSha256": "94260d1faa21f1156630da726c7649d22e91cba0580098ec5bc42eb2fa800280"
+    },
+    {
+      "package": "NativeShellKit.Security/0.1.0-alpha.2",
+      "deployedDllSha256": "8deb78b18e9b1eef8a6f84e9b0207112387af439ab148044bb5703b29f8f6d74"
+    },
+    {
+      "package": "NativeShellKit.WinUI/0.1.0-alpha.2",
+      "deployedDllSha256": "dc6bfa23b6e3cb474fcfc6edbac201e49474b540f3eda695b302e5a7a9b9d61f"
+    },
+    {
+      "package": "NativeShellKit.Windows/0.1.0-alpha.2",
+      "deployedDllSha256": "59dffcde6e421dfd133ff7a78813cd79be6fe6cb9de9d9742b4e5403ea15c6ad"
+    }
+  ],
+  "consumerSelfTestExit": 0
+}

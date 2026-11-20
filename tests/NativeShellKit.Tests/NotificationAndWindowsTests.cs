@@ -1,6 +1,7 @@
 using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Notifications;
 using NativeShellKit.Abstractions.Settings;
+using NativeShellKit.Abstractions.Tray;
 using NativeShellKit.Diagnostics.Logging;
 using NativeShellKit.Hosting.Hosting;
 using NativeShellKit.Notifications;
@@ -23,8 +24,8 @@ public sealed class NotificationAndWindowsTests
         NativeNotificationSubmissionStatus subStatus = NativeNotificationSubmissionStatus.SubmittedToPlatform,
         string? errorMsg = null) : INativeNotificationPresenter
     {
-        public bool IsRegistered => regStatus == NativeNotificationRegistrationStatus.Registered;
         public NativeNotificationRegistrationStatus RegistrationStatus { get; } = regStatus;
+        public bool IsRegistered => RegistrationStatus == NativeNotificationRegistrationStatus.Registered;
         public string? RegistrationError { get; } = regStatus == NativeNotificationRegistrationStatus.Failed ? errorMsg : null;
         public List<(string AppId, string Id, string Args)> Presented { get; } = [];
 
@@ -273,9 +274,12 @@ public sealed class NotificationAndWindowsTests
 
         bool exitRaised = false;
         tray.FullExitRequested += (_, _) => exitRaised = true;
-        tray.RequestFullExit();
+        tray.UpdateTooltip("Tray App (Synced)");
+        ITrayService trayContract = tray;
+        trayContract.SetMenuItems([new NativeShellKit.Abstractions.Tray.TrayMenuDescriptor(11, "From Interface")]);
+        trayContract.RequestFullExit();
         Assert.True(exitRaised);
-        Assert.False(tray.HandleWindowClosing());
+        Assert.False(trayContract.HandleWindowClosing());
         Assert.Contains(Win32Constants.NIM_DELETE, fake.ShellNotifyCalls);
     }
 }

@@ -4,6 +4,13 @@ using System.Text.RegularExpressions;
 
 namespace NativeShellKit.Abstractions.Identity;
 
+public sealed record LegacyIdentityOverrides(
+    string? SingleInstanceMutexName = null,
+    string? ActivationPipeName = null,
+    string? StartupRegistryValueName = null,
+    string? StartupArguments = null,
+    string? AppUserModelIdOverride = null);
+
 /// <summary>
 /// Canonical application identity controlling storage isolation, IPC endpoints,
 /// single-instance coordination, startup registration, and notification routing.
@@ -17,7 +24,8 @@ public sealed partial class AppIdentity
         string displayName,
         string publisher = "NativeShellKit",
         string version = "0.1.0",
-        string? baseDataRoot = null)
+        string? baseDataRoot = null,
+        LegacyIdentityOverrides? legacyOverrides = null)
     {
         AppId = ValidateSlug(appId, nameof(appId));
         if (string.IsNullOrWhiteSpace(displayName))
@@ -30,10 +38,27 @@ public sealed partial class AppIdentity
             ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
             : Path.GetFullPath(baseDataRoot);
 
+        LegacyOverrides = legacyOverrides;
         _sanitizedId = SanitizeForIdentifier(AppId);
-        AppUserModelId = $"{Publisher}.{AppId}";
-        TrayIconGuid = DeriveDeterministicGuid($"tray:{AppUserModelId}");
-        InstallerGuid = DeriveDeterministicGuid($"installer:{AppUserModelId}");
+        var defaultAumid = $"{Publisher}.{AppId}";
+        AppUserModelId = !string.IsNullOrWhiteSpace(legacyOverrides?.AppUserModelIdOverride)
+            ? legacyOverrides.AppUserModelIdOverride.Trim()
+            : defaultAumid;
+        TrayIconGuid = DeriveDeterministicGuid($"tray:{defaultAumid}");
+        InstallerGuid = DeriveDeterministicGuid($"installer:{defaultAumid}");
+
+        SingleInstanceMutexName = !string.IsNullOrWhiteSpace(legacyOverrides?.SingleInstanceMutexName)
+            ? legacyOverrides.SingleInstanceMutexName.Trim()
+            : $@"Local\NativeShellKit_{_sanitizedId}_SingleInstance_Mutex_v1";
+        ActivationPipeName = !string.IsNullOrWhiteSpace(legacyOverrides?.ActivationPipeName)
+            ? legacyOverrides.ActivationPipeName.Trim()
+            : $"NativeShellKit_{_sanitizedId}_Activation_Pipe_v1";
+        StartupRegistryValueName = !string.IsNullOrWhiteSpace(legacyOverrides?.StartupRegistryValueName)
+            ? legacyOverrides.StartupRegistryValueName.Trim()
+            : $"NativeShellKit.{_sanitizedId}";
+        EffectiveStartupArguments = !string.IsNullOrWhiteSpace(legacyOverrides?.StartupArguments)
+            ? legacyOverrides.StartupArguments.Trim()
+            : "--autostart";
     }
 
     public string AppId { get; }
@@ -41,6 +66,7 @@ public sealed partial class AppIdentity
     public string Publisher { get; }
     public string Version { get; }
     public string BaseDataRoot { get; }
+    public LegacyIdentityOverrides? LegacyOverrides { get; }
     public string AppUserModelId { get; }
     public Guid TrayIconGuid { get; }
     public Guid InstallerGuid { get; }
@@ -51,10 +77,11 @@ public sealed partial class AppIdentity
     public string SecretsDirectory => Path.Combine(DataDirectory, "secrets");
     public string NotificationHistoryFilePath => Path.Combine(DataDirectory, "notifications-history.json");
 
-    public string SingleInstanceMutexName => $@"Local\NativeShellKit_{_sanitizedId}_SingleInstance_Mutex_v1";
-    public string ActivationPipeName => $"NativeShellKit_{_sanitizedId}_Activation_Pipe_v1";
+    public string SingleInstanceMutexName { get; }
+    public string ActivationPipeName { get; }
     public string IpcPipeName => $"NativeShellKit_{_sanitizedId}_Ipc_Pipe_v1";
-    public string StartupRegistryValueName => $"NativeShellKit.{_sanitizedId}";
+    public string StartupRegistryValueName { get; }
+    public string EffectiveStartupArguments { get; }
 
     public void EnsureDirectoriesExist()
     {

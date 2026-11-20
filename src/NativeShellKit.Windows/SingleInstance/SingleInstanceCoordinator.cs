@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Text;
 using NativeShellKit.Abstractions.Identity;
+using NativeShellKit.Abstractions.Windows;
 
 namespace NativeShellKit.Windows.SingleInstance;
 
@@ -8,7 +9,7 @@ namespace NativeShellKit.Windows.SingleInstance;
 /// Per-identity single-instance session coordinator using a named Win32 Mutex and
 /// asynchronous Named Pipe activation listener/signaler.
 /// </summary>
-public sealed class SingleInstanceCoordinator : IAsyncDisposable
+public sealed class SingleInstanceCoordinator : ISingleInstanceService
 {
     private static readonly HashSet<string> ActiveInProcessMutexes = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object InProcessLock = new();

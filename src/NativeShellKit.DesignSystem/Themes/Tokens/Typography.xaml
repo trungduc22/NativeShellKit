@@ -1,0 +1,70 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style x:Key="NskCaptionTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Small, Segoe UI" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="LineHeight" Value="16" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <Style x:Key="NskCaptionStrongTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Small, Segoe UI" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="LineHeight" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NskBodyTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="LineHeight" Value="20" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <Style x:Key="NskBodyStrongTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="LineHeight" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NskSubtitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="LineHeight" Value="22" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NskSectionTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="LineHeight" Value="24" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NskPageTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="LineHeight" Value="32" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NskDisplayMetricTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="LineHeight" Value="36" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NskMonoCodeTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <!-- v1 backwards-compatibility aliases -->
+    <Style x:Key="NativeShellPageTitleStyle" BasedOn="{StaticResource NskPageTitleTextStyle}" TargetType="TextBlock" />
+    <Style x:Key="NativeShellSectionTitleStyle" BasedOn="{StaticResource NskSectionTitleTextStyle}" TargetType="TextBlock" />
+</ResourceDictionary>

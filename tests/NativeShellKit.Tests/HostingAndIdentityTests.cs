@@ -3,7 +3,9 @@ using NativeShellKit.Abstractions.Communication;
 using NativeShellKit.Abstractions.DependencyInjection;
 using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Lifecycle;
+using NativeShellKit.Abstractions.Modules;
 using NativeShellKit.Abstractions.Notifications;
+using NativeShellKit.Abstractions.Windows;
 using NativeShellKit.Communication;
 using NativeShellKit.Hosting.DependencyInjection;
 using NativeShellKit.Hosting.Hosting;
@@ -182,6 +184,32 @@ public sealed class HostingAndIdentityTests
     }
 
     [Fact]
+    public async Task SupervisedWorkers_DrainConcurrentQuickWorkersAndPeriodicWork()
+    {
+        await using var supervisor = new BackgroundTaskSupervisor();
+        var tasks = new Task[1_500];
+        Parallel.For(0, tasks.Length, index =>
+            tasks[index] = supervisor.RunSupervisedAsync("finite", _ => Task.CompletedTask));
+        await Task.WhenAll(tasks);
+        Assert.Equal(0, supervisor.ActiveTaskCount);
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loop = supervisor.RunSupervisedLoopAsync("periodic", TimeSpan.FromMinutes(1), _ =>
+        {
+            started.TrySetResult();
+            return Task.CompletedTask;
+        });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("periodic", supervisor.ActiveTaskNames);
+
+        await supervisor.StopAllAsync(TimeSpan.FromSeconds(5));
+        Assert.True(loop.IsCompletedSuccessfully);
+        Assert.Empty(supervisor.ActiveTaskNames);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            supervisor.RunSupervisedAsync("late", _ => Task.CompletedTask));
+    }
+
+    [Fact]
     public async Task HostLifecycle_ExecutesHooksInOrder_AndIsolatesBackgroundTaskFaults()
     {
         using var tmp = new TempRootScope();
@@ -269,5 +297,149 @@ public sealed class HostingAndIdentityTests
 
         await hostB.StopAsync();
         await hostA.StopAsync();
+    }
+
+    private sealed class CaptiveRootConsumer(ScopedCounterDep scoped)
+    {
+        public ScopedCounterDep Scoped { get; } = scoped;
+    }
+
+    private sealed class FaultingModule(string id, bool isCritical, int order = 100, params string[] deps) : IShellModule
+    {
+        public ModuleDescriptor Descriptor { get; } = new(id, id, "1.0.0");
+        public int StartupOrder => order;
+        public bool IsCritical => isCritical;
+        public IReadOnlyList<string> DependsOnModuleIds => deps;
+
+        public void RegisterServices(IServiceRegistry services) { }
+        public IReadOnlyList<ModuleNavigationItem> GetNavigationItems() => [];
+        public IReadOnlyList<ModuleCommandDescriptor> GetCommands() => [];
+        public Task InitializeAsync(IModuleContext context, CancellationToken ct = default) =>
+            throw new InvalidOperationException($"failure-in-{id}");
+        public Task ShutdownAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class OrderedDependencyModule(string id, int order, List<string> trace, params string[] deps) : IShellModule
+    {
+        public ModuleDescriptor Descriptor { get; } = new(id, id, "1.0.0");
+        public int StartupOrder => order;
+        public IReadOnlyList<string> DependsOnModuleIds => deps;
+
+        public void RegisterServices(IServiceRegistry services) { }
+        public IReadOnlyList<ModuleNavigationItem> GetNavigationItems() => [];
+        public IReadOnlyList<ModuleCommandDescriptor> GetCommands() => [];
+        public Task InitializeAsync(IModuleContext context, CancellationToken ct = default)
+        {
+            trace.Add(id);
+            return Task.CompletedTask;
+        }
+        public Task ShutdownAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task MediContainer_RejectsRootScopedCaptiveResolution_AndResolvesCrossThreadFactoriesWithoutDeadlock()
+    {
+        var trace = new List<string>();
+        await using var container = new ServiceContainer();
+        container.AddScoped(_ => new ScopedCounterDep(trace, "scoped"));
+        container.AddSingleton<TransientDep, TransientDep>();
+        container.AddSingleton(sp =>
+        {
+            // Cross-thread resolution inside factory would deadlock old ServiceContainer lock (_sync)
+            var inner = Task.Run(() => NskServiceProviderExtensions.GetRequiredService<TransientDep>(sp))
+                .GetAwaiter()
+                .GetResult();
+            return new SingletonDep();
+        });
+
+        Assert.Throws<InvalidOperationException>(() =>
+            NskServiceProviderExtensions.GetRequiredService<ScopedCounterDep>(container));
+
+        var resolved = await Task.Run(() =>
+            NskServiceProviderExtensions.GetRequiredService<SingletonDep>(container))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(resolved);
+    }
+
+    [Fact]
+    public async Task ModularHost_IsolatesNonCriticalFaults_EnforcesDependenciesAndStartupOrder()
+    {
+        using var tmp = new TempRootScope("nsk-mod-v2");
+        var identity = new AppIdentity("modv2", "Mod V2", baseDataRoot: tmp.RootPath);
+        var trace = new List<string>();
+
+        var coreLateOrder = new OrderedDependencyModule("core-base", 50, trace);
+        var leafEarlyOrderButDependsOnCore = new OrderedDependencyModule("core-leaf", 10, trace, "core-base");
+        var optionalBroken = new FaultingModule("companion-bad", isCritical: false, order: 20);
+        var downstreamDegraded = new OrderedDependencyModule("companion-child", 30, trace, "companion-bad");
+
+        await using var host = NativeShellHostBuilder.Create(identity)
+            .AddModule(leafEarlyOrderButDependsOnCore)
+            .AddModule(downstreamDegraded)
+            .AddModule(optionalBroken)
+            .AddModule(coreLateOrder)
+            .Build();
+
+        await host.StartAsync();
+
+        // core-base must start before core-leaf despite StartupOrder 50 vs 10
+        Assert.Equal(["core-base", "core-leaf"], trace);
+        Assert.Equal(ModuleHealthState.Healthy, host.Modules.GetHealthSnapshot("core-base")?.State);
+        Assert.Equal(ModuleHealthState.Healthy, host.Modules.GetHealthSnapshot("core-leaf")?.State);
+        Assert.Equal(ModuleHealthState.Faulted, host.Modules.GetHealthSnapshot("companion-bad")?.State);
+        Assert.Equal(ModuleHealthState.Degraded, host.Modules.GetHealthSnapshot("companion-child")?.State);
+
+        int ticks = 0;
+        using var loopGate = new ManualResetEventSlim(false);
+        var loopTask = host.BackgroundTasks.RunSupervisedLoopAsync(
+            "heartbeat-loop",
+            TimeSpan.FromMilliseconds(20),
+            _ =>
+            {
+                if (Interlocked.Increment(ref ticks) >= 2)
+                    loopGate.Set();
+                return Task.CompletedTask;
+            });
+
+        Assert.True(loopGate.Wait(TimeSpan.FromSeconds(3)));
+        Assert.Contains("heartbeat-loop", host.BackgroundTasks.ActiveTaskNames);
+
+        await host.StopAsync();
+
+        // Critical module failure must throw
+        var criticalId = new AppIdentity("modcrit", "Mod Crit", baseDataRoot: Path.Combine(tmp.RootPath, "crit"));
+        await using var critHost = NativeShellHostBuilder.Create(criticalId)
+            .AddModule(new FaultingModule("crit-mod", isCritical: true))
+            .Build();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => critHost.StartAsync());
+    }
+
+    [Fact]
+    public void LegacyIdentityOverrides_PreserveExistingMutexPipeAndStartupRunNames()
+    {
+        using var tmp = new TempRootScope("nsk-legacy");
+        var overrides = new LegacyIdentityOverrides(
+            SingleInstanceMutexName: @"Local\Legacy_App_Mutex_v1",
+            ActivationPipeName: "Legacy_App_Pipe_v1",
+            StartupRegistryValueName: "LegacyAppRun",
+            StartupArguments: "--background",
+            AppUserModelIdOverride: "Legacy.Company.App");
+
+        var identity = new AppIdentity("legacyapp", "Legacy App", "trungduc22", "1.0.0", tmp.RootPath, overrides);
+        Assert.Equal(@"Local\Legacy_App_Mutex_v1", identity.SingleInstanceMutexName);
+        Assert.Equal("Legacy_App_Pipe_v1", identity.ActivationPipeName);
+        Assert.Equal("LegacyAppRun", identity.StartupRegistryValueName);
+        Assert.Equal("--background", identity.EffectiveStartupArguments);
+        Assert.Equal("Legacy.Company.App", identity.AppUserModelId);
+
+        var backend = new NativeShellKit.Windows.Startup.InMemoryStartupRegistryBackend();
+        var startup = new NativeShellKit.Windows.Startup.WindowsStartupService(identity, backend);
+        startup.Enable(@"C:\Apps\Legacy\LegacyApp.exe", startMinimized: true);
+        Assert.Contains("--background --minimized", startup.GetRegisteredCommand());
+        Assert.NotNull(backend.ReadValue("LegacyAppRun"));
+
+        var single = new SingleInstanceCoordinator(identity);
+        Assert.Equal(@"Local\Legacy_App_Mutex_v1", single.MutexName);
+        Assert.Equal("Legacy_App_Pipe_v1", single.PipeName);
     }
 }

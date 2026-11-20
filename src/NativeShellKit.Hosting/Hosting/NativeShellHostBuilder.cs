@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using NativeShellKit.Abstractions.DependencyInjection;
 using NativeShellKit.Abstractions.Identity;
 using NativeShellKit.Abstractions.Lifecycle;
@@ -15,6 +16,7 @@ public sealed class NativeShellHostBuilder
     private readonly string[] _args;
     private readonly List<Action<IServiceRegistry>> _serviceConfigurators = [];
     private readonly List<IShellModule> _modules = [];
+    private HostBuildOptions _buildOptions = new();
 
     private NativeShellHostBuilder(AppIdentity identity, string[]? args)
     {
@@ -24,6 +26,13 @@ public sealed class NativeShellHostBuilder
 
     public static NativeShellHostBuilder Create(AppIdentity identity, string[]? args = null) =>
         new(identity, args);
+
+    public NativeShellHostBuilder WithBuildOptions(HostBuildOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        _buildOptions = options;
+        return this;
+    }
 
     public NativeShellHostBuilder ConfigureServices(Action<IServiceRegistry> configure)
     {
@@ -47,7 +56,7 @@ public sealed class NativeShellHostBuilder
 
     public NativeShellHost Build()
     {
-        var container = new ServiceContainer();
+        var container = new ServiceContainer(_buildOptions.ValidateScopes, _buildOptions.ValidateOnBuild);
         var startupContext = new AppStartupContext(
             _identity,
             _args,
@@ -58,12 +67,14 @@ public sealed class NativeShellHostBuilder
         var moduleCatalog = new ModuleCatalog(_modules);
         var settingsService = new SettingsService(_identity);
 
+        NativeShellHost? host = null;
         container.AddSingleton(_identity);
-        container.AddSingleton<IServiceRegistry>(container);
         container.AddSingleton<IAppLifecycleService>(lifecycleService);
         container.AddSingleton<IModuleCatalog>(moduleCatalog);
         container.AddSingleton<ISettingsService>(settingsService);
-        container.AddSingleton<IBackgroundTaskSupervisor>(sp => new BackgroundTaskSupervisor(sp.GetService<ISdkLogger>()));
+        container.AddSingleton<IBackgroundTaskSupervisor>(sp =>
+            new BackgroundTaskSupervisor(Abstractions.DependencyInjection.ServiceProviderExtensions.GetService<ISdkLogger>(sp)));
+        container.AddSingleton<IAppHost>(_ => host!);
 
         foreach (var configure in _serviceConfigurators)
         {
@@ -75,9 +86,10 @@ public sealed class NativeShellHostBuilder
             module.RegisterServices(container);
         }
 
-        var supervisor = container.GetRequiredService<IBackgroundTaskSupervisor>();
-        var host = new NativeShellHost(_identity, container, moduleCatalog, lifecycleService, supervisor);
-        container.AddSingleton<IAppHost>(host);
+        var provider = container.BuildFinalProvider();
+        var supervisor = ServiceProviderServiceExtensions.GetRequiredService<IBackgroundTaskSupervisor>(provider);
+        var logger = Abstractions.DependencyInjection.ServiceProviderExtensions.GetService<ISdkLogger>(provider);
+        host = new NativeShellHost(_identity, container, provider, moduleCatalog, lifecycleService, supervisor, logger);
         return host;
     }
 }

@@ -4,13 +4,21 @@ using NativeShellKit.Abstractions.DependencyInjection;
 
 namespace NativeShellKit.Hosting.DependencyInjection;
 
+internal interface IServiceCollectionBackedRegistry
+{
+    IServiceCollection ServiceCollection { get; }
+    void TrackRawDescriptors(IEnumerable<ServiceDescriptor> descriptors);
+}
+
 /// <summary>
-/// Thread-safe dependency injection container supporting Singleton, Scoped, and Transient lifetimes,
-/// strict caller vs. container disposal ownership, per-call-chain cycle detection, and
-/// Microsoft.Extensions.DependencyInjection interoperability.
+/// Thread-safe dependency injection container backed by
+/// <see cref="Microsoft.Extensions.DependencyInjection.ServiceProvider"/>,
+/// supporting Singleton, Scoped, and Transient lifetimes, captive-scope validation,
+/// strict caller vs. container disposal ownership, and MEDI interoperability.
 /// </summary>
 public sealed class ServiceContainer :
     IServiceRegistry,
+    IServiceCollectionBackedRegistry,
     IServiceProvider,
     IShellServiceScopeFactory,
     IServiceProviderIsService,
@@ -18,18 +26,30 @@ public sealed class ServiceContainer :
     IAsyncDisposable
 {
     private readonly object _sync = new();
+    private readonly object _buildLock = new();
     private readonly List<ServiceDescriptorEntry> _descriptors = [];
-    private readonly ScopeBucket _rootScope;
+    private readonly ServiceCollection _services = [];
+    private readonly List<ServiceProvider> _retiredProviders = [];
+    private readonly bool _validateScopes;
+    private readonly bool _validateOnBuild;
+
+    private ServiceProvider? _currentProvider;
+    private long _descriptorVersion;
+    private long _builtVersion = -1;
     private bool _disposed;
 
-    public ServiceContainer()
+    public ServiceContainer(bool validateScopes = true, bool validateOnBuild = false)
     {
-        _rootScope = new ScopeBucket(this, isRoot: true);
-        AddSingleton<IServiceProvider>(this);
-        AddSingleton<IServiceScopeFactory>(this);
-        AddSingleton<IShellServiceScopeFactory>(this);
-        AddSingleton<IServiceProviderIsService>(this);
+        _validateScopes = validateScopes;
+        _validateOnBuild = validateOnBuild;
+
+        _services.AddSingleton<IServiceRegistry>(this);
+        _services.AddSingleton<IShellServiceScopeFactory>(sp =>
+            new MediShellServiceScopeFactory(ServiceProviderServiceExtensions.GetRequiredService<IServiceScopeFactory>(sp)));
+        _descriptorVersion = 1;
     }
+
+    IServiceCollection IServiceCollectionBackedRegistry.ServiceCollection => _services;
 
     public IReadOnlyList<ServiceDescriptorEntry> Descriptors
     {
@@ -47,7 +67,7 @@ public sealed class ServiceContainer :
         ArgumentNullException.ThrowIfNull(serviceType);
         lock (_sync)
         {
-            return _descriptors.Any(d => d.ServiceType == serviceType);
+            return _services.Any(d => d.ServiceType == serviceType);
         }
     }
 
@@ -57,7 +77,8 @@ public sealed class ServiceContainer :
         if (serviceType == typeof(IServiceProvider) ||
             serviceType == typeof(IServiceScopeFactory) ||
             serviceType == typeof(IShellServiceScopeFactory) ||
-            serviceType == typeof(IServiceProviderIsService))
+            serviceType == typeof(IServiceProviderIsService) ||
+            serviceType == typeof(IServiceRegistry))
         {
             return true;
         }
@@ -76,15 +97,44 @@ public sealed class ServiceContainer :
             ValidateConstructible(descriptor.ImplementationType);
         }
 
+        var msDescriptor = ToMicrosoftDescriptor(descriptor);
         lock (_sync)
         {
             ThrowIfDisposed();
             _descriptors.Add(descriptor);
-            if (descriptor.Instance is not null && descriptor.Lifetime == ServiceLifetimeKind.Singleton)
+            ((ICollection<ServiceDescriptor>)_services).Add(msDescriptor);
+            _descriptorVersion++;
+        }
+    }
+
+    void IServiceCollectionBackedRegistry.TrackRawDescriptors(IEnumerable<ServiceDescriptor> descriptors)
+    {
+        lock (_sync)
+        {
+            ThrowIfDisposed();
+            foreach (var descriptor in descriptors)
             {
-                // Caller-provided instances are cached on the root scope without taking disposal ownership.
-                _rootScope.SetCachedInstance(descriptor, descriptor.Instance);
+                if (!descriptor.IsKeyedService &&
+                    descriptor.ImplementationType is not null &&
+                    descriptor.ImplementationInstance is null &&
+                    descriptor.ImplementationFactory is null &&
+                    !descriptor.ServiceType.IsGenericTypeDefinition)
+                {
+                    ValidateConstructible(descriptor.ImplementationType);
+                }
+
+                ((ICollection<ServiceDescriptor>)_services).Add(descriptor);
+                if (!descriptor.IsKeyedService)
+                {
+                    _descriptors.Add(new ServiceDescriptorEntry(
+                        descriptor.ServiceType,
+                        descriptor.ImplementationType,
+                        descriptor.ImplementationInstance,
+                        descriptor.ImplementationFactory,
+                        FromMicrosoftLifetime(descriptor.Lifetime)));
+                }
             }
+            _descriptorVersion++;
         }
     }
 
@@ -145,175 +195,102 @@ public sealed class ServiceContainer :
 
     public IShellServiceScope CreateScope()
     {
-        lock (_sync)
-        {
-            ThrowIfDisposed();
-            return new ScopeBucket(this, isRoot: false);
-        }
+        var provider = EnsureProvider();
+        return new MediShellServiceScope(ServiceProviderServiceExtensions.GetRequiredService<IServiceScopeFactory>(provider).CreateScope());
     }
 
     IServiceScope IServiceScopeFactory.CreateScope() => CreateScope();
 
-    public object? GetService(Type serviceType) =>
-        GetServiceInternal(serviceType, _rootScope, resolutionChain: null);
-
-    private object? GetServiceInternal(Type serviceType, ScopeBucket activeScope, HashSet<Type>? resolutionChain)
+    public object? GetService(Type serviceType)
     {
         ArgumentNullException.ThrowIfNull(serviceType);
+        if (serviceType == typeof(IServiceScopeFactory))
+            return this;
+        if (serviceType == typeof(IShellServiceScopeFactory))
+            return this;
+        if (serviceType == typeof(IServiceProviderIsService))
+            return this;
 
-        lock (_sync)
+        var provider = EnsureProvider();
+        return provider.GetService(serviceType);
+    }
+
+    internal ServiceProvider BuildFinalProvider() => EnsureProvider();
+
+    private ServiceProvider EnsureProvider()
+    {
+        var current = Volatile.Read(ref _currentProvider);
+        long ver = Volatile.Read(ref _descriptorVersion);
+        if (current is not null && Volatile.Read(ref _builtVersion) == ver)
+            return current;
+
+        lock (_buildLock)
         {
             ThrowIfDisposed();
-            activeScope.ThrowIfDisposed();
-
-            if (serviceType == typeof(IServiceProvider))
-                return activeScope.ServiceProvider;
-
-            if (serviceType == typeof(IServiceScopeFactory) || serviceType == typeof(IShellServiceScopeFactory))
-                return this;
-
-            if (serviceType == typeof(IServiceProviderIsService))
-                return this;
-
-            if (serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            long targetVersion;
+            ServiceCollection snapshot;
+            lock (_sync)
             {
-                var itemType = serviceType.GetGenericArguments()[0];
-                var matches = _descriptors.Where(d => d.ServiceType == itemType).ToList();
-                var array = Array.CreateInstance(itemType, matches.Count);
-                for (int i = 0; i < matches.Count; i++)
+                ThrowIfDisposed();
+                if (_currentProvider is not null && _builtVersion == _descriptorVersion)
+                    return _currentProvider;
+
+                targetVersion = _descriptorVersion;
+                snapshot = new ServiceCollection();
+                foreach (var item in _services)
+                    ((ICollection<ServiceDescriptor>)snapshot).Add(item);
+            }
+
+            var built = snapshot.BuildServiceProvider(new ServiceProviderOptions
+            {
+                ValidateScopes = _validateScopes,
+                ValidateOnBuild = _validateOnBuild
+            });
+
+            lock (_sync)
+            {
+                if (_disposed)
                 {
-                    array.SetValue(ResolveDescriptor(matches[i], activeScope, resolutionChain), i);
-                }
-                return array;
-            }
-
-            var descriptor = _descriptors.LastOrDefault(d => d.ServiceType == serviceType);
-            if (descriptor is not null)
-                return ResolveDescriptor(descriptor, activeScope, resolutionChain);
-
-            if (!serviceType.IsAbstract && !serviceType.IsInterface && serviceType.GetConstructors().Length > 0)
-                return CreateInstance(serviceType, activeScope, resolutionChain);
-
-            return null;
-        }
-    }
-
-    private object ResolveDescriptor(ServiceDescriptorEntry descriptor, ScopeBucket activeScope, HashSet<Type>? resolutionChain)
-    {
-        if (descriptor.Lifetime == ServiceLifetimeKind.Singleton)
-        {
-            if (_rootScope.TryGetCachedInstance(descriptor, out var existingSingleton))
-                return existingSingleton;
-
-            object singletonInstance = CreateFromDescriptor(descriptor, _rootScope, resolutionChain);
-            _rootScope.SetCachedInstance(descriptor, singletonInstance);
-            TrackDisposableIfOwned(descriptor, singletonInstance, _rootScope);
-            return singletonInstance;
-        }
-
-        if (descriptor.Lifetime == ServiceLifetimeKind.Scoped)
-        {
-            if (activeScope.TryGetCachedInstance(descriptor, out var existingScoped))
-                return existingScoped;
-
-            object scopedInstance = CreateFromDescriptor(descriptor, activeScope, resolutionChain);
-            activeScope.SetCachedInstance(descriptor, scopedInstance);
-            TrackDisposableIfOwned(descriptor, scopedInstance, activeScope);
-            return scopedInstance;
-        }
-
-        object transientInstance = CreateFromDescriptor(descriptor, activeScope, resolutionChain);
-        TrackDisposableIfOwned(descriptor, transientInstance, activeScope);
-        return transientInstance;
-    }
-
-    private object CreateFromDescriptor(ServiceDescriptorEntry descriptor, ScopeBucket scope, HashSet<Type>? resolutionChain)
-    {
-        if (descriptor.Factory is not null)
-        {
-            var chain = resolutionChain ?? [];
-            if (!chain.Add(descriptor.ServiceType))
-                throw new InvalidOperationException($"Circular dependency detected while resolving factory for '{descriptor.ServiceType.FullName}'.");
-            try
-            {
-                return descriptor.Factory(scope.ServiceProvider);
-            }
-            finally
-            {
-                chain.Remove(descriptor.ServiceType);
-            }
-        }
-
-        if (descriptor.Instance is not null)
-            return descriptor.Instance;
-
-        var targetType = descriptor.ImplementationType ?? descriptor.ServiceType;
-        return CreateInstance(targetType, scope, resolutionChain);
-    }
-
-    private void TrackDisposableIfOwned(ServiceDescriptorEntry descriptor, object instance, ScopeBucket targetScope)
-    {
-        // Caller-provided instances (descriptor.Instance != null) are not owned by the container.
-        if (descriptor.Instance is not null)
-            return;
-
-        if (!ReferenceEquals(instance, this) && !ReferenceEquals(instance, targetScope) &&
-            (instance is IDisposable || instance is IAsyncDisposable))
-        {
-            targetScope.TrackDisposable(instance);
-        }
-    }
-
-    private object CreateInstance(Type implementationType, ScopeBucket activeScope, HashSet<Type>? resolutionChain)
-    {
-        ValidateConstructible(implementationType);
-        var chain = resolutionChain ?? [];
-        if (!chain.Add(implementationType))
-            throw new InvalidOperationException($"Circular dependency detected while resolving '{implementationType.FullName}'.");
-
-        try
-        {
-            var constructors = implementationType
-                .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                .OrderByDescending(c => c.GetParameters().Length)
-                .ToArray();
-
-            foreach (var ctor in constructors)
-            {
-                var parameters = ctor.GetParameters();
-                var args = new object?[parameters.Length];
-                bool matched = true;
-
-                for (int i = 0; i < parameters.Length; i++)
-                {
-                    var p = parameters[i];
-                    var resolved = GetServiceInternal(p.ParameterType, activeScope, chain);
-                    if (resolved is null)
-                    {
-                        if (p.HasDefaultValue)
-                        {
-                            resolved = p.DefaultValue;
-                        }
-                        else
-                        {
-                            matched = false;
-                            break;
-                        }
-                    }
-                    args[i] = resolved;
+                    built.Dispose();
+                    ThrowIfDisposed();
                 }
 
-                if (matched)
-                    return ctor.Invoke(args);
-            }
+                if (_currentProvider is not null)
+                    _retiredProviders.Add(_currentProvider);
 
-            throw new InvalidOperationException($"Unable to resolve constructor parameters for '{implementationType.FullName}'.");
-        }
-        finally
-        {
-            chain.Remove(implementationType);
+                _currentProvider = built;
+                Volatile.Write(ref _builtVersion, targetVersion);
+                return built;
+            }
         }
     }
+
+    private static ServiceDescriptor ToMicrosoftDescriptor(ServiceDescriptorEntry entry)
+    {
+        var lifetime = entry.Lifetime switch
+        {
+            ServiceLifetimeKind.Singleton => ServiceLifetime.Singleton,
+            ServiceLifetimeKind.Scoped => ServiceLifetime.Scoped,
+            ServiceLifetimeKind.Transient => ServiceLifetime.Transient,
+            _ => ServiceLifetime.Transient
+        };
+
+        if (entry.Instance is not null)
+            return new ServiceDescriptor(entry.ServiceType, entry.Instance);
+
+        if (entry.Factory is not null)
+            return new ServiceDescriptor(entry.ServiceType, entry.Factory, lifetime);
+
+        var impl = entry.ImplementationType ?? entry.ServiceType;
+        return new ServiceDescriptor(entry.ServiceType, impl, lifetime);
+    }
+
+    private static ServiceLifetimeKind FromMicrosoftLifetime(ServiceLifetime lifetime) => lifetime switch
+    {
+        ServiceLifetime.Singleton => ServiceLifetimeKind.Singleton,
+        ServiceLifetime.Scoped => ServiceLifetimeKind.Scoped,
+        _ => ServiceLifetimeKind.Transient
+    };
 
     private static void ValidateConstructible(Type implementationType)
     {
@@ -331,114 +308,68 @@ public sealed class ServiceContainer :
 
     public void Dispose()
     {
+        List<ServiceProvider> toDispose;
         lock (_sync)
         {
             if (_disposed)
                 return;
             _disposed = true;
+            toDispose = [.. _retiredProviders];
+            _retiredProviders.Clear();
+            if (_currentProvider is not null)
+            {
+                toDispose.Add(_currentProvider);
+                _currentProvider = null;
+            }
         }
 
-        _rootScope.Dispose();
+        for (int i = toDispose.Count - 1; i >= 0; i--)
+        {
+            try { toDispose[i].Dispose(); } catch { }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        List<ServiceProvider> toDispose;
         lock (_sync)
         {
             if (_disposed)
                 return;
             _disposed = true;
+            toDispose = [.. _retiredProviders];
+            _retiredProviders.Clear();
+            if (_currentProvider is not null)
+            {
+                toDispose.Add(_currentProvider);
+                _currentProvider = null;
+            }
         }
 
-        await _rootScope.DisposeAsync().ConfigureAwait(false);
+        for (int i = toDispose.Count - 1; i >= 0; i--)
+        {
+            try { await toDispose[i].DisposeAsync().ConfigureAwait(false); } catch { }
+        }
     }
 
-    private sealed class ScopeBucket : IShellServiceScope, IServiceProvider
+    private sealed class MediShellServiceScopeFactory(IServiceScopeFactory inner) : IShellServiceScopeFactory
     {
-        private readonly ServiceContainer _owner;
-        private readonly bool _isRoot;
-        private readonly Dictionary<ServiceDescriptorEntry, object> _scopedCache = [];
-        private readonly List<object> _disposables = [];
-        private bool _scopeDisposed;
+        public IShellServiceScope CreateScope() => new MediShellServiceScope(inner.CreateScope());
+        IServiceScope IServiceScopeFactory.CreateScope() => CreateScope();
+    }
 
-        public ScopeBucket(ServiceContainer owner, bool isRoot)
+    private sealed class MediShellServiceScope(IServiceScope inner) : IShellServiceScope
+    {
+        public IServiceProvider ServiceProvider => inner.ServiceProvider;
+
+        public void Dispose() => inner.Dispose();
+
+        public ValueTask DisposeAsync()
         {
-            _owner = owner;
-            _isRoot = isRoot;
-        }
-
-        public IServiceProvider ServiceProvider => this;
-
-        public object? GetService(Type serviceType) =>
-            _isRoot ? _owner.GetServiceInternal(serviceType, this, null) : _owner.GetServiceInternal(serviceType, this, null);
-
-        public bool TryGetCachedInstance(ServiceDescriptorEntry descriptor, out object instance) =>
-            _scopedCache.TryGetValue(descriptor, out instance!);
-
-        public void SetCachedInstance(ServiceDescriptorEntry descriptor, object instance) =>
-            _scopedCache[descriptor] = instance;
-
-        public void TrackDisposable(object instance)
-        {
-            if (!_disposables.Any(d => ReferenceEquals(d, instance)))
-                _disposables.Add(instance);
-        }
-
-        public void ThrowIfDisposed()
-        {
-            ObjectDisposedException.ThrowIf(_scopeDisposed, this);
-        }
-
-        public void Dispose()
-        {
-            List<object> toDispose;
-            lock (_owner._sync)
-            {
-                if (_scopeDisposed)
-                    return;
-                _scopeDisposed = true;
-                toDispose = [.. _disposables];
-                _disposables.Clear();
-                _scopedCache.Clear();
-            }
-
-            for (int i = toDispose.Count - 1; i >= 0; i--)
-            {
-                if (toDispose[i] is IDisposable d)
-                {
-                    try { d.Dispose(); } catch { }
-                }
-                else if (toDispose[i] is IAsyncDisposable ad)
-                {
-                    try { ad.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { }
-                }
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            List<object> toDispose;
-            lock (_owner._sync)
-            {
-                if (_scopeDisposed)
-                    return;
-                _scopeDisposed = true;
-                toDispose = [.. _disposables];
-                _disposables.Clear();
-                _scopedCache.Clear();
-            }
-
-            for (int i = toDispose.Count - 1; i >= 0; i--)
-            {
-                if (toDispose[i] is IAsyncDisposable ad)
-                {
-                    try { await ad.DisposeAsync().ConfigureAwait(false); } catch { }
-                }
-                else if (toDispose[i] is IDisposable d)
-                {
-                    try { d.Dispose(); } catch { }
-                }
-            }
+            if (inner is IAsyncDisposable asyncDisposable)
+                return asyncDisposable.DisposeAsync();
+            inner.Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 }

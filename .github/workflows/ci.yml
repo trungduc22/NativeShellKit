@@ -2,7 +2,7 @@ name: NativeShellKit CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, migration/m12-sdk, 'convergence/*', 'eco/**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -29,7 +29,10 @@ jobs:
         id: pack
         shell: powershell
         run: |
-          .\packaging\Pack-NuGet.ps1 -Configuration Release -Platform x64
+          [xml]$bp = Get-Content -LiteralPath "Directory.Build.props" -Raw
+          $sdkVer = [string]$bp.Project.PropertyGroup.Version
+          "SDK_VERSION=$sdkVer" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          .\packaging\Pack-NuGet.ps1 -Version $sdkVer -Configuration Release -Platform x64
 
       - name: Restore complete solution (including samples and tests)
         run: |
@@ -48,16 +51,73 @@ jobs:
           samples\BackgroundCompanionApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\BackgroundCompanionApp.exe --self-test || exit /b 1
           samples\UnifiedHostDemo\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\UnifiedHostDemo.exe --self-test || exit /b 1
 
-      - name: Verify dotnet new nativeshellkit template
+      - name: Run sample interactive UI tests and capture screenshots
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $shotRoot = Join-Path (Get-Location) "artifacts\screenshots"
+          New-Item -ItemType Directory -Path $shotRoot -Force | Out-Null
+          $samples = @(
+            @{ Name = "MinimalNativeApp"; Exe = "samples\MinimalNativeApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\MinimalNativeApp.exe"; Out = (Join-Path $shotRoot "minimal") },
+            @{ Name = "BackgroundCompanionApp"; Exe = "samples\BackgroundCompanionApp\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\BackgroundCompanionApp.exe"; Out = (Join-Path $shotRoot "companion") },
+            @{ Name = "UnifiedHostDemo"; Exe = "samples\UnifiedHostDemo\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\UnifiedHostDemo.exe"; Out = (Join-Path $shotRoot "unified") }
+          )
+          foreach ($s in $samples) {
+            Write-Host "Running interactive UI test for $($s.Name)..."
+            $exePath = (Resolve-Path $s.Exe).Path
+            $psi = [System.Diagnostics.ProcessStartInfo]::new($exePath)
+            $psi.WorkingDirectory = Split-Path -Parent $exePath
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.ArgumentList.Add("--interactive-test")
+            $psi.ArgumentList.Add($s.Out)
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $stdoutTask = $p.StandardOutput.ReadToEndAsync()
+            $stderrTask = $p.StandardError.ReadToEndAsync()
+            if (-not $p.WaitForExit(90000)) {
+              $p.Kill($true)
+              throw "$($s.Name) interactive UI test timed out after 90s"
+            }
+            $p.WaitForExit()
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+            if ($stdout) { Write-Host $stdout.TrimEnd() }
+            if ($stderr) { Write-Host "::warning::$($s.Name) stderr: $($stderr.TrimEnd())" }
+            if ($p.ExitCode -ne 0) {
+              throw "$($s.Name) interactive UI test failed with exit code $($p.ExitCode)`n$stderr"
+            }
+          }
+
+      - name: Verify dotnet new nativeshellkit template and clean publish (.xbf/.pri)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: powershell
         run: |
-          dotnet new install artifacts\packages\NativeShellKit.Templates.0.1.0-alpha.1.nupkg
+          $tplPkg = "artifacts\packages\NativeShellKit.Templates.$env:SDK_VERSION.nupkg"
+          if (-not (Test-Path $tplPkg)) { throw "Template package not found: $tplPkg" }
+          dotnet new install $tplPkg
           $tplTest = Join-Path $env:RUNNER_TEMP "MyNextApp"
+          if (Test-Path $tplTest) { Remove-Item $tplTest -Recurse -Force }
           dotnet new nativeshellkit -n MyNextApp -o $tplTest
           dotnet restore "$tplTest\MyNextApp.csproj" -p:RestoreAdditionalProjectSources="${{ github.workspace }}\artifacts\packages"
           dotnet build "$tplTest\MyNextApp.csproj" -c Release -p:Platform=x64 --no-restore
           cmd /c "`"$tplTest\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\MyNextApp.exe`" --self-test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $pubOut = Join-Path $env:RUNNER_TEMP "MyNextAppPublish"
+          if (Test-Path $pubOut) { Remove-Item $pubOut -Recurse -Force }
+          dotnet publish "$tplTest\MyNextApp.csproj" -c Release -p:Platform=x64 -p:RestoreAdditionalProjectSources="${{ github.workspace }}\artifacts\packages" -o $pubOut
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $winUiXbf = Get-ChildItem -Path (Join-Path $pubOut "NativeShellKit.WinUI") -Filter "*.xbf" -Recurse -ErrorAction SilentlyContinue
+          $dsXbf = Get-ChildItem -Path (Join-Path $pubOut "NativeShellKit.DesignSystem") -Filter "*.xbf" -Recurse -ErrorAction SilentlyContinue
+          if (-not $winUiXbf -or -not $dsXbf) {
+            throw "Published consumer missing SDK .xbf files (winUi=$($winUiXbf.Count), designSystem=$($dsXbf.Count))"
+          }
+          if (-not (Test-Path (Join-Path $pubOut "NativeShellKit.WinUI.pri")) -or -not (Test-Path (Join-Path $pubOut "NativeShellKit.DesignSystem.pri"))) {
+            throw "Published consumer missing SDK .pri files"
+          }
+          cmd /c "`"$pubOut\MyNextApp.exe`" --self-test"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Developer Kit and compile Inno Setup installer
@@ -65,7 +125,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: powershell
         run: |
-          .\packaging\Build-DeveloperKit.ps1 -Configuration Release -Platform x64
+          .\packaging\Build-DeveloperKit.ps1 -Version $env:SDK_VERSION -Configuration Release -Platform x64
           $innoExe = "artifacts\developer-kit\inno\NativeShellKit-DeveloperKit-InnoSetup-x64.exe"
           if (Test-Path $innoExe) {
             Write-Host "Verified compiled Inno Setup GUI installer: $innoExe"
@@ -75,3 +135,18 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "console;verbosity=normal"
+
+      - name: Retain UI acceptance screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeShellKit-screenshots-${{ env.SDK_VERSION }}
+          path: artifacts/screenshots/
+          if-no-files-found: warn
+
+      - name: Retain verified development feed
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeShellKit-feed-${{ env.SDK_VERSION }}
+          path: artifacts/packages/
+          if-no-files-found: error

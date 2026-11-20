@@ -1,5 +1,17 @@
 namespace NativeShellKit.Abstractions.Navigation;
 
+public enum NavigationCachePolicy
+{
+    Cached,
+    Transient
+}
+
+public interface INavigationAware
+{
+    void OnNavigatedTo(object? parameter);
+    void OnNavigatedFrom();
+}
+
 public sealed record NavigationRouteDescriptor(
     string Route,
     string Title,
@@ -7,7 +19,8 @@ public sealed record NavigationRouteDescriptor(
     Func<object> ViewFactory,
     string? ModuleId = null,
     int Order = 0,
-    bool IsFooterItem = false);
+    bool IsFooterItem = false,
+    NavigationCachePolicy CachePolicy = NavigationCachePolicy.Cached);
 
 public sealed class NavigationEventArgs : EventArgs
 {
@@ -33,6 +46,21 @@ public interface INavigationService
     void RegisterRoute(NavigationRouteDescriptor descriptor);
     bool Navigate(string route, object? parameter = null);
     bool GoBack();
+}
+
+public enum AccentSourceMode
+{
+    System,
+    AppBrand,
+    Custom
+}
+
+public enum ShellBackdropKind
+{
+    MicaBase,
+    MicaAlt,
+    Acrylic,
+    Solid
 }
 
 public enum AppThemeMode
@@ -62,12 +90,38 @@ public interface IThemeService
     AccentColorPalette ComputePalette(string accentHex, bool isDark);
 }
 
+public enum DialogDefaultButton
+{
+    Primary,
+    Secondary,
+    Close
+}
+
 public sealed record DialogRequest(
     string Title,
     string Message,
     string PrimaryButtonText = "OK",
     string? SecondaryButtonText = null,
-    string? CloseButtonText = null);
+    string? CloseButtonText = null)
+{
+    public DialogDefaultButton DefaultButton { get; init; } = DialogDefaultButton.Primary;
+}
+
+public sealed record DestructiveDialogRequest(
+    string Title,
+    string Message,
+    string ConfirmButtonText,
+    string CancelButtonText = "Cancel");
+
+public sealed record ProgressDialogRequest(
+    string Title,
+    string InitialStatus,
+    bool IsCancelable = false,
+    string CancelButtonText = "Cancel");
+
+public sealed record DialogProgressUpdate(
+    string Status,
+    double? Percent = null);
 
 public enum DialogOutcome
 {
@@ -79,6 +133,22 @@ public enum DialogOutcome
 public interface IDialogService
 {
     Task<DialogOutcome> ShowMessageAsync(DialogRequest request, CancellationToken ct = default);
+
+    Task<DialogOutcome> ShowDestructiveConfirmAsync(DestructiveDialogRequest request, CancellationToken ct = default)
+        => ShowMessageAsync(new DialogRequest(
+            request.Title,
+            request.Message,
+            request.ConfirmButtonText,
+            CloseButtonText: request.CancelButtonText)
+        {
+            DefaultButton = DialogDefaultButton.Close
+        }, ct);
+
+    Task ShowProgressAsync(
+        ProgressDialogRequest request,
+        Func<IProgress<DialogProgressUpdate>, CancellationToken, Task> work,
+        CancellationToken ct = default)
+        => work(new Progress<DialogProgressUpdate>(), ct);
 }
 
 public interface IShellWindowService

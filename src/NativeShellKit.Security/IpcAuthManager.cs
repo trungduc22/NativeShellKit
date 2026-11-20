@@ -22,11 +22,16 @@ public sealed class IpcAuthManager
     }
 
     public IpcEnvelope CreateSignedEnvelope(string operation, string payloadJson = "{}")
+        => CreateSignedEnvelope(Guid.NewGuid().ToString("N"), operation, payloadJson);
+
+    public IpcEnvelope CreateSignedResponse(IpcEnvelope request, string operation, string payloadJson = "{}")
+        => CreateSignedEnvelope(request.MessageId, operation, payloadJson);
+
+    private IpcEnvelope CreateSignedEnvelope(string messageId, string operation, string payloadJson)
     {
         if (string.IsNullOrWhiteSpace(operation))
             throw new ArgumentException("Operation cannot be empty.", nameof(operation));
 
-        var messageId = Guid.NewGuid().ToString("N");
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var unsigned = new IpcEnvelope(
@@ -59,7 +64,8 @@ public sealed class IpcAuthManager
 
         var skew = maxClockSkew ?? TimeSpan.FromMinutes(2);
         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        if (Math.Abs(nowMs - envelope.TimestampUnixMs) > skew.TotalMilliseconds)
+        if (envelope.TimestampUnixMs < nowMs - skew.TotalMilliseconds ||
+            envelope.TimestampUnixMs > nowMs + skew.TotalMilliseconds)
             return false;
 
         byte[] expectedBytes;
@@ -103,13 +109,22 @@ public sealed class IpcAuthManager
 
     private void PruneExpiredNonces(long nowMs, long skewMs)
     {
-        if (_seenNonces.Count < 1024)
+        if (_seenNonces.Count < 512)
             return;
 
         foreach (var kv in _seenNonces)
         {
             if (Math.Abs(nowMs - kv.Value) > skewMs)
                 _seenNonces.TryRemove(kv.Key, out _);
+        }
+
+        if (_seenNonces.Count >= 1024)
+        {
+            int toRemove = _seenNonces.Count - 512;
+            foreach (var old in _seenNonces.OrderBy(kv => kv.Value).Take(toRemove))
+            {
+                _seenNonces.TryRemove(old.Key, out _);
+            }
         }
     }
 

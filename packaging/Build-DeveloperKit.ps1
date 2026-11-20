@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.0-alpha.1",
+    [string]$Version = "",
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
     [string]$AdditionalNuGetSource = "",
@@ -10,6 +10,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+[xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot "Directory.Build.props") -Raw
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = [string]$buildProps.Project.PropertyGroup.Version
+}
 $devKitRoot = Join-Path $repoRoot "artifacts\developer-kit"
 $payloadDir = Join-Path $devKitRoot "payload"
 
@@ -26,6 +30,15 @@ if (-not (Test-Path (Join-Path $packagesOut "feed-manifest.json"))) {
     }
     & powershell @packArgs
     if ($LASTEXITCODE -ne 0) { throw "Pack-NuGet.ps1 failed ($LASTEXITCODE)." }
+}
+
+$feed = Get-Content -LiteralPath (Join-Path $packagesOut "feed-manifest.json") -Raw | ConvertFrom-Json
+if ($feed.version -ne $Version) { throw "Developer Kit package feed version does not match $Version." }
+foreach ($package in $feed.packages) {
+    $path = Join-Path $packagesOut $package.fileName
+    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $package.sha256) {
+        throw "Package hash mismatch: $($package.fileName)"
+    }
 }
 
 Write-Host "[2/5] Staging Developer Kit payload..."

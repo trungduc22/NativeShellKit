@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using NativeShellKit.Abstractions.Communication;
@@ -11,7 +12,7 @@ namespace NativeShellKit.Communication.Ipc;
 
 internal static class IpcFraming
 {
-    public const int MaxPayloadBytes = 64 * 1024;
+    public const int MaxPayloadBytes = 256 * 1024;
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -71,15 +72,20 @@ public sealed class NamedPipeIpcServer : IIpcServer
 
     private readonly AppIdentity _identity;
     private readonly IpcAuthManager _auth;
+    private readonly bool _sameUserPeer;
     private readonly ConcurrentDictionary<string, IpcRequestHandler> _allowedHandlers = new(StringComparer.OrdinalIgnoreCase);
 
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
 
     public NamedPipeIpcServer(AppIdentity identity, IpcAuthManager auth, string? pipeNameOverride = null)
+        : this(identity, auth, pipeNameOverride, sameUserPeer: false) { }
+
+    public NamedPipeIpcServer(AppIdentity identity, IpcAuthManager auth, string? pipeNameOverride, bool sameUserPeer)
     {
         _identity = identity ?? throw new ArgumentNullException(nameof(identity));
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
+        _sameUserPeer = sameUserPeer;
         PipeName = string.IsNullOrWhiteSpace(pipeNameOverride) ? identity.IpcPipeName : pipeNameOverride;
     }
 
@@ -145,15 +151,20 @@ public sealed class NamedPipeIpcServer : IIpcServer
                     PipeDirection.InOut,
                     NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                    _sameUserPeer ? PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly : PipeOptions.Asynchronous);
 
                 await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
-                var req = await IpcFraming.ReadEnvelopeAsync(server, ct).ConfigureAwait(false);
+                using var requestLimit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                if (_sameUserPeer)
+                    requestLimit.CancelAfter(TimeSpan.FromSeconds(3));
+                var req = await IpcFraming.ReadEnvelopeAsync(server, requestLimit.Token).ConfigureAwait(false);
                 if (req is null)
                     continue;
 
-                var resp = await HandleRequestAsync(req, ct).ConfigureAwait(false);
-                await IpcFraming.WriteEnvelopeAsync(server, resp, ct).ConfigureAwait(false);
+                var resp = await HandleRequestAsync(req, requestLimit.Token).ConfigureAwait(false);
+                if (_sameUserPeer)
+                    resp = _auth.CreateSignedResponse(req, resp.Operation, resp.PayloadJson);
+                await IpcFraming.WriteEnvelopeAsync(server, resp, requestLimit.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -184,6 +195,17 @@ public sealed class NamedPipeIpcServer : IIpcServer
             return _auth.CreateSignedEnvelope("HANDSHAKE_OK", JsonSerializer.Serialize(caps, IpcFraming.JsonOptions));
         }
 
+        if (string.Equals(req.Operation, EcosystemIpcOperations.Capabilities, StringComparison.OrdinalIgnoreCase))
+        {
+            var ops = AllowedOperations
+                .Append(EcosystemIpcOperations.Capabilities)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(static op => op, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var descriptor = new EcosystemCapabilityDescriptor(_identity.AppId, _identity.Version, IpcProtocolVersion.Current, ops);
+            return _auth.CreateSignedEnvelope("ECOSYSTEM_CAPABILITIES_OK", JsonSerializer.Serialize(descriptor, IpcFraming.JsonOptions));
+        }
+
         if (!_allowedHandlers.TryGetValue(req.Operation, out var handler))
         {
             return _auth.CreateSignedEnvelope("ERROR", JsonSerializer.Serialize(new { error = "FORBIDDEN", operation = req.Operation }, IpcFraming.JsonOptions));
@@ -202,13 +224,19 @@ public sealed class NamedPipeIpcClient : IIpcClient
 {
     private readonly IpcAuthManager _auth;
     private readonly int _connectTimeoutMs;
+    private readonly bool _sameUserPeer;
 
     public NamedPipeIpcClient(AppIdentity identity, IpcAuthManager auth, string? pipeNameOverride = null, int connectTimeoutMs = 1500)
+        : this(identity, auth, pipeNameOverride, connectTimeoutMs, sameUserPeer: false) { }
+
+    public NamedPipeIpcClient(AppIdentity identity, IpcAuthManager auth, string? pipeNameOverride,
+        int connectTimeoutMs, bool sameUserPeer)
     {
         ArgumentNullException.ThrowIfNull(identity);
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
         PipeName = string.IsNullOrWhiteSpace(pipeNameOverride) ? identity.IpcPipeName : pipeNameOverride;
         _connectTimeoutMs = Math.Max(200, connectTimeoutMs);
+        _sameUserPeer = sameUserPeer;
     }
 
     public string PipeName { get; }
@@ -218,6 +246,13 @@ public sealed class NamedPipeIpcClient : IIpcClient
         var resp = await SendAsync(NamedPipeIpcServer.HandshakeOperation, "{}", ct).ConfigureAwait(false);
         return JsonSerializer.Deserialize<IpcCapabilitySet>(resp.PayloadJson, IpcFraming.JsonOptions)
             ?? throw new InvalidOperationException("Invalid IPC capability handshake response.");
+    }
+
+    public async Task<EcosystemCapabilityDescriptor> GetEcosystemCapabilitiesAsync(CancellationToken ct = default)
+    {
+        var resp = await SendAsync(EcosystemIpcOperations.Capabilities, "{}", ct).ConfigureAwait(false);
+        return JsonSerializer.Deserialize<EcosystemCapabilityDescriptor>(resp.PayloadJson, IpcFraming.JsonOptions)
+            ?? throw new InvalidOperationException("Invalid ecosystem capability response.");
     }
 
     public async Task<IpcEnvelope> SendAsync(string operation, string payloadJson = "{}", CancellationToken ct = default)
@@ -231,20 +266,27 @@ public sealed class NamedPipeIpcClient : IIpcClient
         ArgumentNullException.ThrowIfNull(envelope);
 
         Exception? lastError = null;
-        for (int attempt = 0; attempt < 3; attempt++)
+        int maxAttempts = _sameUserPeer ? 1 : 3;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             try
             {
-                await using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                await using var client = _sameUserPeer
+                    ? new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, TokenImpersonationLevel.Identification)
+                    : new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(_connectTimeoutMs);
                 await client.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
 
                 await IpcFraming.WriteEnvelopeAsync(client, envelope, timeoutCts.Token).ConfigureAwait(false);
                 var resp = await IpcFraming.ReadEnvelopeAsync(client, timeoutCts.Token).ConfigureAwait(false);
-                return resp ?? throw new EndOfStreamException("IPC server closed connection without response.");
+                if (resp is null)
+                    throw new EndOfStreamException("IPC server closed connection without response.");
+                if (_sameUserPeer && (resp.MessageId != envelope.MessageId || !_auth.VerifyEnvelope(resp)))
+                    throw new UnauthorizedAccessException("Unverified peer response.");
+                return resp;
             }
-            catch (Exception ex) when (attempt < 2 && !ct.IsCancellationRequested)
+            catch (Exception ex) when (attempt < maxAttempts - 1 && !ct.IsCancellationRequested)
             {
                 lastError = ex;
                 await Task.Delay(50 * (attempt + 1), ct).ConfigureAwait(false);

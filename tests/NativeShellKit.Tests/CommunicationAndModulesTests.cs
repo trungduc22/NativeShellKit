@@ -112,6 +112,38 @@ public sealed class CommunicationAndModulesTests
     }
 
     [Fact]
+    public async Task LocalPeerGrant_AuthenticatesAndCorrelates_ThenRevokesAndRotates()
+    {
+        using var tmp = new TempRootScope("nsk-peer");
+        var identity = new AppIdentity($"peer-{Guid.NewGuid():N}", "Peer Test", baseDataRoot: tmp.RootPath);
+        var grant = new LocalPeerGrant(identity);
+        Assert.Null(await grant.OpenClientAsync());
+        await grant.GrantAsync();
+        await using var originalClient = Assert.IsType<NamedPipeIpcClient>(await grant.OpenClientAsync());
+        await using var first = Assert.IsType<NamedPipeIpcServer>(await grant.OpenServerAsync());
+        first.RegisterAllowedHandler("status", (request, _) => Task.FromResult(request with { Operation = "ok" }));
+        await first.StartAsync();
+        Assert.Equal("ok", (await originalClient.SendAsync("status")).Operation);
+        var ecoCaps = await originalClient.GetEcosystemCapabilitiesAsync();
+        Assert.Equal(identity.AppId, ecoCaps.AppId);
+        Assert.Equal(identity.Version, ecoCaps.Version);
+        Assert.Equal(IpcProtocolVersion.Current, ecoCaps.ProtocolVersion);
+        Assert.Contains("status", ecoCaps.SupportedOperations);
+        Assert.Contains(EcosystemIpcOperations.Capabilities, ecoCaps.SupportedOperations);
+        Assert.Contains("FORBIDDEN", (await originalClient.SendAsync("unlisted")).PayloadJson);
+        await first.StopAsync();
+        await grant.RevokeAsync();
+        Assert.Null(await grant.OpenServerAsync());
+        Assert.Null(await grant.OpenClientAsync());
+
+        await grant.GrantAsync();
+        await using var second = Assert.IsType<NamedPipeIpcServer>(await grant.OpenServerAsync());
+        await second.StartAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => originalClient.SendAsync("status"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => originalClient.GetEcosystemCapabilitiesAsync());
+    }
+
+    [Fact]
     public async Task ModularHost_InitializesAndStopsTwoModules_WithBusDecoupling()
     {
         using var tmp = new TempRootScope();
@@ -138,5 +170,40 @@ public sealed class CommunicationAndModulesTests
 
         await host.StopAsync();
         Assert.Equal(["init:alpha", "init:beta", "stop:beta", "stop:alpha"], trace);
+    }
+
+    [Fact]
+    public async Task SecurityAndIpc_BoundsNonceCache_Enforces256KiBLimit_AndSupportsILocalPeerGrant()
+    {
+        using var tmp = new TempRootScope("nsk-sec-v2");
+        var identity = new AppIdentity("secv2", "Sec V2", baseDataRoot: tmp.RootPath);
+        var key = Enumerable.Repeat((byte)0x5A, 32).ToArray();
+        var auth = new IpcAuthManager(identity, key);
+
+        var first = auth.CreateSignedEnvelope("op", "{}");
+        Assert.True(auth.VerifyEnvelope(first));
+        for (int i = 0; i < 1200; i++)
+        {
+            var env = auth.CreateSignedEnvelope("op", "{}");
+            Assert.True(auth.VerifyEnvelope(env));
+        }
+
+        // Most recent nonce is still tracked against replay even after pruning
+        var latest = auth.CreateSignedEnvelope("op", "{}");
+        Assert.True(auth.VerifyEnvelope(latest));
+        Assert.False(auth.VerifyEnvelope(latest));
+
+        ILocalPeerGrant grant = new LocalPeerGrant(identity);
+        await grant.GrantAsync();
+        await using var server = await grant.OpenServerAsync();
+        Assert.NotNull(server);
+        server!.RegisterAllowedHandler("echo", (req, _) => Task.FromResult(req with { Operation = "ECHO_OK" }));
+        await server.StartAsync();
+
+        await using var client = await grant.OpenClientAsync();
+        Assert.NotNull(client);
+        var oversized = new string('x', 260 * 1024);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client!.SendAsync("echo", oversized));
+        await grant.RevokeAsync();
     }
 }

@@ -9,7 +9,7 @@ A unified, XAML-first, C#-driven native Windows application SDK, WinUI 3 shell, 
 - **ED-Local-AI** — Native WinUI 3 local assistant ([Migration Guide](docs/migrations/MIGRATION_ED_LOCAL_AI.md))
 - **BackThread** — Non-WinUI desktop/cross-platform companion using UI-agnostic foundational packages ([Compatibility Guide](docs/migrations/MIGRATION_BACKTHREAD_COMPATIBILITY.md))
 
-## Package Suite (`0.1.0-alpha.1`)
+## Package Suite (`0.1.0-alpha.2`)
 
 - `NativeShellKit.Abstractions` — Application identity (`AppIdentity`), lifecycle, module, notification, navigation, settings, diagnostics, and IPC contracts.
 - `NativeShellKit.Hosting` — `NativeShellHostBuilder`, lightweight DI container (`ServiceContainer`), atomic JSON settings store, background task supervision, and ordered lifecycle management.
@@ -47,7 +47,7 @@ dotnet test tests\NativeShellKit.Tests\NativeShellKit.Tests.csproj -c Release -p
 ### Scaffold a New Application
 
 ```powershell
-dotnet new install .\artifacts\packages\NativeShellKit.Templates.0.1.0-alpha.1.nupkg
+dotnet new install .\artifacts\packages\NativeShellKit.Templates.0.1.0-alpha.2.nupkg
 dotnet new nativeshellkit -n MyNextApp -o .\MyNextApp
 ```
 

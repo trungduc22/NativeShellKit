@@ -1,0 +1,73 @@
+<UserControl
+    x:Class="NativeShellKit.WinUI.Shell.NativeShellFrame"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="using:NativeShellKit.WinUI.Shell">
+    <Grid x:Name="ShellRootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <shell:ShellTitleBar
+            x:Name="TitleBar"
+            Grid.Row="0" />
+
+        <NavigationView
+            x:Name="ShellNavigationView"
+            Grid.Row="1"
+            IsSettingsVisible="False"
+            PaneDisplayMode="Left"
+            OpenPaneLength="240"
+            CompactPaneLength="48"
+            SelectionChanged="ShellNavigationView_SelectionChanged"
+            BackRequested="ShellNavigationView_BackRequested">
+            <Grid
+                x:Name="ContentContainerGrid"
+                Padding="24,16,24,24"
+                RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <SelectorBar
+                    x:Name="CompactSelectorBar"
+                    Grid.Row="0"
+                    Visibility="Collapsed"
+                    SelectionChanged="CompactSelectorBar_SelectionChanged" />
+
+                <StackPanel
+                    x:Name="BuiltInBannerStackPanel"
+                    Grid.Row="1"
+                    Spacing="6"
+                    Visibility="Collapsed">
+                    <ContentPresenter
+                        x:Name="CustomBannerPresenter"
+                        Visibility="Collapsed" />
+                    <StackPanel
+                        x:Name="ManagedBannersPanel"
+                        Spacing="6" />
+                    <TextBlock
+                        x:Name="CoalescedBannerCountText"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Visibility="Collapsed" />
+                </StackPanel>
+
+                <ContentPresenter
+                    x:Name="PageContentHost"
+                    Grid.Row="2"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch" />
+            </Grid>
+        </NavigationView>
+
+        <ContentPresenter
+            x:Name="FooterStripPresenter"
+            Grid.Row="2"
+            Visibility="Collapsed" />
+    </Grid>
+</UserControl>

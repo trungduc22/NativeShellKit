@@ -8,6 +8,7 @@ using NativeShellKit.WinUI.Navigation;
 
 namespace NativeShellKit.WinUI.Shell;
 
+[Obsolete("Use NativeShellFrame instead. NativeShellView will be removed in 0.3.0.")]
 public sealed partial class NativeShellView : UserControl, INotifyPropertyChanged
 {
     private INavigationService? _navigationService;

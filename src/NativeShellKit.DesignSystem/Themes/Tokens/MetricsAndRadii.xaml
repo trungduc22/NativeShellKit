@@ -1,0 +1,11 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <CornerRadius x:Key="NskRadiusControl">4</CornerRadius>
+    <CornerRadius x:Key="NskRadiusCard">8</CornerRadius>
+    <CornerRadius x:Key="NskRadiusOverlay">12</CornerRadius>
+    <CornerRadius x:Key="NskRadiusPill">999</CornerRadius>
+
+    <Thickness x:Key="NskBorderThin">1</Thickness>
+    <Thickness x:Key="NskBorderNone">0</Thickness>
+</ResourceDictionary>

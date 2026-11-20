@@ -10,6 +10,18 @@ public static class DesignTokens
         public const double M = 16;
         public const double L = 24;
         public const double XL = 32;
+        public const double XXL = 48;
+    }
+
+    public static class CompactSpacing
+    {
+        public const double XXS = 2;
+        public const double XS = 6;
+        public const double S = 8;
+        public const double M = 12;
+        public const double L = 16;
+        public const double XL = 24;
+        public const double XXL = 32;
     }
 
     public static class Radii
@@ -20,6 +32,14 @@ public static class DesignTokens
         public const double Pill = 999;
     }
 
+    public static class Sizing
+    {
+        public const double TitleBarStandard = 44;
+        public const double TitleBarCompact = 36;
+        public const double MinInteractiveStandard = 32;
+        public const double MinInteractiveCompact = 28;
+    }
+
     public static class Typography
     {
         public const double CaptionSize = 12;
@@ -27,6 +47,15 @@ public static class DesignTokens
         public const double SubtitleSize = 16;
         public const double SectionTitleSize = 18;
         public const double PageTitleSize = 24;
+        public const double DisplayMetricSize = 28;
+        public const double MonoCodeSize = 12.5;
+    }
+
+    public static class Motion
+    {
+        public const int FastMs = 83;
+        public const int StandardMs = 167;
+        public const int EmphasizedMs = 250;
     }
 
     public static class SemanticHex
@@ -35,9 +64,9 @@ public static class DesignTokens
         public const string AccentDark = "#60A5FA";
         public const string SuccessLight = "#047857";
         public const string SuccessDark = "#34D399";
-        public const string WarningLight = "#B45309";
+        public const string WarningLight = "#9A3412";
         public const string WarningDark = "#FBBF24";
-        public const string DangerLight = "#DC2626";
+        public const string DangerLight = "#B91C1C";
         public const string DangerDark = "#F87171";
         public const string InfoLight = "#1D4ED8";
         public const string InfoDark = "#60A5FA";
