@@ -33,7 +33,7 @@ M12 package preparation is tracked in [M12 state](migrations/M12_STATE.md). This
 
 ## Next Concrete Task
 
-Verify `0.2.0-alpha.4` CI run on `eco/nativeshellkit-m1`, publish immutable packages to GitHub Packages upon explicit maintainer approval, and roll out CPM + Dependabot + ecosystem interoperability across HiberDesk, GhostCode, BackThread, and ED-Local-AI (tracked in `docs/ECOSYSTEM_CHECKPOINT.md`).
+M1 (`NativeShellKit 0.2.0-alpha.4` published to GitHub Packages, run `44726417367`) and M2–M6 consumer PRs (`GhostCode` PR #1, `HiberDesk` PR #2, `BackThread` PR #1, `ed-local-ai` PR #1) are complete with all CI workflows green (see `docs/ECOSYSTEM_CHECKPOINT.md`). Next: review and merge the 4 consumer PRs into their default branches so Dependabot activates, then run a live Windows desktop 4-app coexistence verification.
 
 ## 0.2.0-alpha.3 downstream verification and worker drain
 
